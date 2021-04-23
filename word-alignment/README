@@ -1,0 +1,46 @@
+The data:
+=========
+The data directory contains files derived from the Canadian Hansards,
+originally aligned by Ulrich Germann:
+-hansards.e English
+-hansards.f French
+-hansards.a alignments of the first 37 sentences. The notation
+  i-j means the word as position i of the French is aligned
+  to the word at position j of the English (zero-indexed);
+  while notation i?j means they are probably aligned.
+
+Expected output:
+================
+Your code should produce a file representing an alignment for the data in data.
+The format of the output file should be:
+
+* Each line corresponds to an alignment for one sentence pair.
+* Each line consists of space-separated items of the form i-j where i is the index of a word
+  on the f sentence, and j is the index of a word on the e sentence (both indices are 0-based).
+
+The file example_alignment is an example of an alignment file for the provided data (not random, but not a very good one..).
+
+I provide you with a python script called validate.py, which verifies that your data format is correct.
+Run is as:
+   python validate.py -e data/hansards.e -f data/hansards.f < your_alignemnt_file
+
+For example:
+   python validate.py -e data/hansards.e -f data/hansards.f < example_alignment
+   python validate.py -e data/hansards.e -f data/hansards.f < README
+
+Evaluation Script
+===================
+I provide you with an evaluation script called eval.py.
+
+eval.py computes the alignment error rate (AER) of a given alignment based on the gold alignment,
+as well as provide a semi-graphical display of the alignments compared to the gold alignments.
+
+to invoke it, use the following syntax from the commandline:
+
+    python eval.py -e e_file -f f_file -a gold_a < predicted_a
+
+for example:
+
+    python eval.py -f data/hansards.f -e data/hansards.e -a data/hansards.a < example_alignment
+
+
