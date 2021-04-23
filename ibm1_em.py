@@ -4,10 +4,7 @@ import os
 from collections import Counter
 import numpy as np
 from tqdm import tqdm
-from typing import List
-from multiprocessing import shared_memory, Process, Lock
-from multiprocessing import cpu_count, current_process
-
+import
 
 """
 Download and extract the contents of this file.
@@ -31,6 +28,7 @@ will allocate 1gb of heap size.
 
 
 """
+from typing import List
 
 
 class Lang:
@@ -54,11 +52,9 @@ class Lang:
 
 class IbmModel1:
     UNIQUE_NONE = '*None*'
-    __lock = Lock()
+
     def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True):
         self.logger = logging.getLogger("IBM_Model1")
-        self.shm = shared_memory.SharedMemory(create=True, size=)
-
         self.source: Lang = source
         self.add_special_null()
         self.target: Lang = target
@@ -74,62 +70,6 @@ class IbmModel1:
         self.source.unique += 1
         self.source.w_index[self.UNIQUE_NONE] = self.source.unique - 1
 
-    def calc_sent_pair(self,source_sent, target_sent, shm_countef, count_e_f, shm_total_f, total_f ):
-        """
-        # SENTENCE CONTEXT
-        source_sent = [self.UNIQUE_NONE] + source_sent  # Adding Blank word in the beginning
-
-        s_total = {w: 0 for w in source_sent}  # count
-        for s_w, t_w in itertools.product(source_sent, target_sent):
-            s_total[s_w] += self.expected_alignment(s_w, t_w)
-
-        for s_w, t_w in itertools.product(source_sent, target_sent):
-            expected = self.expected_alignment(s_w, t_w)
-            collected_count = expected / s_total[s_w]
-            count_e_f[self.source.w_index[s_w], self.target.w_index[t_w]] += collected_count
-            total_f[self.target.w_index[t_w]] += collected_count
-        """
-        existing_shm = shared_memory.SharedMemory(self.shm.name)
-        prob_ef = np.ndarray((self.source.unique, self.target.unique), dtype=np.float, buffer=existing_shm.buf)
-
-        shm_countef = shared_memory.SharedMemory(shm_countef.name)
-        count_e_f = np.ndarray(count_e_f.shape, dtype=np.float, buffer=shm_countef.buf)
-
-        shm_total_f = shared_memory.SharedMemory(shm_total_f.name)
-        total_f = np.ndarray((self.source.unique, self.target.unique), dtype=np.float, buffer=shm_total_f.buf)
-
-
-
-        source_sent = [self.UNIQUE_NONE] + source_sent  # Adding Blank word in the beginning
-        s_total = {w: 0 for w in source_sent}  # count
-
-        for s_w, t_w in itertools.product(source_sent, target_sent):
-            # expected = self.expected_alignment(s_w, t_w)
-            expected = prob_ef[self.source.w_index[s_w], self.target.w_index[t_w]]
-            collected_count = expected / s_total[s_w]
-            self.__lock.acquire()
-            count_e_f[self.source.w_index[s_w], self.target.w_index[t_w]] += collected_count
-            total_f[self.target.w_index[t_w]] += collected_count
-            self.__lock.release()
-
-        existing_shm.close()
-        shm_countef.close()
-        shm_total_f.close()
-
-
-    def create_shared_block(self, d1, d2=None):
-        if d2 != None:
-            a = np.zeros(shape=(d1, d2), dtype=np.int64)  # Start with an existing NumPy array
-        else:
-            a = np.zeros(shape=d1, dtype=np.int64)  # Start with an existing NumPy array
-
-        shm = shared_memory.SharedMemory(create=True, size=a.nbytes)
-        # # Now create a NumPy array backed by shared memory
-        np_array = np.ndarray(a.shape, dtype=np.int64, buffer=shm.buf)
-        np_array[:] = a[:]  # Copy the original data into shared memory
-        return shm, np_array
-
-
     def algo(self):
 
         for epoch in tqdm(range(self.n_ep), desc="epoch num", total=self.n_ep):
@@ -139,21 +79,13 @@ class IbmModel1:
             self.logger.info(f"epoch {epoch} perplexity: {curr_perp}")
             self.perplexities.append(curr_perp)
             # E step
-            shm_countef, count_e_f = self.create_shared_block(self.source.unique, self.target.unique)
-            shm_total_f, total_f = self.create_shared_block(self.target.unique)  # all expected alignment of f (target)
-            processes = []
-            for i in range(cpu_count()):
-                _process = Process(target=self.calc_sent_pair, args=(shr.name,))
-                processes.append(_process)
-                _process.start()
-
+            count_e_f = np.zeros((self.source.unique, self.target.unique))
+            total_f = np.zeros(self.target.unique)  # all expected alignment of f (target)
             for source_sent, target_sent in tqdm(zip(self.source.data, self.target.data),
                                                  desc="Iterate all sents pairs",
                                                  total=len(self.source.data)):
-
-
-                calc_sent_pair()
                 # SENTENCE CONTEXT
+                # TODO verify it is a list of str and if needed
                 source_sent = [self.UNIQUE_NONE] + source_sent  # Adding Blank word in the beginning
 
                 s_total = {w: 0 for w in source_sent}  # count
@@ -177,10 +109,7 @@ class IbmModel1:
         return self.prob_ef_expected_alignment[self.source.w_index[s_w], self.target.w_index[t_w]]
 
     def init_uniform_prob(self):
-        # prepare shared memory
-        a = np.ones((self.source.unique, self.target.unique))
-        prob_ef = np.ndarray(a.shape, dtype=a.dtype, buffer=self.shm.buf)
-        prob_ef[:] = a[:]
+        prob_ef = np.ones((self.source.unique, self.target.unique))
         prob_ef /= self.source.unique
         return prob_ef
 
