@@ -59,7 +59,7 @@ class Lang:
     def read_file(f_name: str) -> List[List[str]]:
         with open(f_name, encoding='utf-8') as f:
             lines = f.readlines()
-        res = [line.split() for line in lines]
+        res = [line.split() for line in lines][:2000]
         print(len(res))
         return res
 
@@ -98,7 +98,10 @@ class IbmModel1:
             curr_perp = self.calc_perp()
             self.logger.info(f"epoch {epoch} perplexity: {curr_perp}")
             self.perplexities.append(curr_perp)
-            if self.early_stop and curr_perp - 3 > self.perplexities[-1]:
+            print(curr_perp)
+            print(self.perplexities[-2])
+            if self.early_stop and curr_perp + 3 > self.perplexities[-2]:
+                self.logger.info("Doing early stopping, the model converged.")
                 break
             # E step
             count_e_f = defaultdict(lambda: defaultdict(int))
@@ -192,5 +195,5 @@ if __name__ == '__main__':
     suf_al = 'a'
     en = Lang(suf_en)
     fr = Lang(suf_fr)
-    ibm1 = IbmModel1(en, fr, n_ep=50, init_from_saved_w=False, early_stop=True)
+    ibm1 = IbmModel1(en, fr, n_ep=500, init_from_saved_w=False, early_stop=True)
 
