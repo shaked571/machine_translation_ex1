@@ -1,11 +1,14 @@
+import math
+import sys
+from datetime import datetime
+from typing import List
 import itertools
 import logging
 import os
 from collections import Counter
 import numpy as np
 from tqdm import tqdm
-import
-
+import pickle
 """
 Download and extract the contents of this file.
 
@@ -28,11 +31,23 @@ will allocate 1gb of heap size.
 
 
 """
-from typing import List
+now = datetime.now().strftime("%d_%H_%M_%S")
+if not os.path.isdir('logs'):
+    os.mkdir('logs')
+file_handler = logging.FileHandler(filename=os.path.join('logs', f'log_{now}'))
+stdout_handler = logging.StreamHandler(sys.stdout)
+handlers = [file_handler, stdout_handler]
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s',
+    handlers=handlers
+)
 
 
 class Lang:
     base_name = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'data', 'hansards.')
+
     def __init__(self, suf):
         self.suf = suf
         self.data = self.read_file(self.base_name + self.suf)
@@ -44,16 +59,19 @@ class Lang:
     def read_file(f_name: str) -> List[List[str]]:
         with open(f_name, encoding='utf-8') as f:
             lines = f.readlines()
-        return [line.split() for line in lines]
+        res = [line.split() for line in lines][:2000]
+        print(len(res))
+        return res
 
     @staticmethod
     def flatten(t):
         return [item for sublist in t for item in sublist]
 
+
 class IbmModel1:
     UNIQUE_NONE = '*None*'
-
-    def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True):
+    saved_weight_fn = 'ibm1_p.npy'
+    def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False, path_to_probs=None):
         self.logger = logging.getLogger("IBM_Model1")
         self.source: Lang = source
         self.add_special_null()
@@ -61,9 +79,13 @@ class IbmModel1:
         self.n_ep: int = n_ep
         self.early_stop: bool = early_stop
         self.prob_ef_expected_alignment = self.init_uniform_prob()
-        self.perplexities = [np.inf]
-        self.algo()
-        self.perplexities.pop(0)  # remove the first
+        if init_from_saved_w:
+            prob_ef_expected_alignment = self.load_probs(path_to_probs)
+        else:
+            self.perplexities = [np.inf]
+            self.algo()
+            self.perplexities.pop(0)  # remove the first
+            self.save_probs()
 
     def add_special_null(self):
         self.source.voc[self.UNIQUE_NONE] = len(self.source.data)
@@ -74,18 +96,16 @@ class IbmModel1:
 
         for epoch in tqdm(range(self.n_ep), desc="epoch num", total=self.n_ep):
             curr_perp = self.calc_perp()
-            if self.early_stop and curr_perp > self.perplexities[-1]:
-                break
             self.logger.info(f"epoch {epoch} perplexity: {curr_perp}")
             self.perplexities.append(curr_perp)
+            if self.early_stop and curr_perp - 5 > self.perplexities[-1]:
+                break
             # E step
             count_e_f = np.zeros((self.source.unique, self.target.unique))
             total_f = np.zeros(self.target.unique)  # all expected alignment of f (target)
             for source_sent, target_sent in tqdm(zip(self.source.data, self.target.data),
-                                                 desc="Iterate all sents pairs",
-                                                 total=len(self.source.data)):
+                                                 desc="Iterate all sents pairs", total=len(self.source.data)):
                 # SENTENCE CONTEXT
-                # TODO verify it is a list of str and if needed
                 source_sent = [self.UNIQUE_NONE] + source_sent  # Adding Blank word in the beginning
 
                 s_total = {w: 0 for w in source_sent}  # count
@@ -97,13 +117,12 @@ class IbmModel1:
                     collected_count = expected / s_total[s_w]
                     count_e_f[self.source.w_index[s_w], self.target.w_index[t_w]] += collected_count
                     total_f[self.target.w_index[t_w]] += collected_count
-
-            # Update Prob
             # M step
-            # F==target, e==source
-            for s_w, t_w in itertools.product(self.source.voc, self.target.voc):
-                upd_prob = count_e_f[self.source.w_index[s_w], self.target.w_index[t_w]] / total_f[self.target.w_index[t_w]]
-                self.prob_ef_expected_alignment[self.source.w_index[s_w], self.target.w_index[t_w]] = upd_prob
+            for s_w in tqdm(self.source.voc, desc='calculating vocab', total=self.source.unique):
+                for t_w in self.target.voc:
+                    upd_prob = count_e_f[self.source.w_index[s_w], self.target.w_index[t_w]] / total_f[
+                        self.target.w_index[t_w]]
+                    self.prob_ef_expected_alignment[self.source.w_index[s_w], self.target.w_index[t_w]] = upd_prob
 
     def expected_alignment(self, s_w, t_w):
         return self.prob_ef_expected_alignment[self.source.w_index[s_w], self.target.w_index[t_w]]
@@ -114,40 +133,55 @@ class IbmModel1:
         return prob_ef
 
     def calc_perp(self, ):
-        # TODO
-        pass
-    """
-    def perplexity(sentence_pairs, t, epsilon=1, debug_output=False):
-    pp = 0
-    
-    for sp in sentence_pairs:
-        prob = probability_e_f(sp[1], sp[0], t)
-        pp += math.log(prob, 2) # log base 2
-        
-    pp = 2.0**(-pp)
-    return pp
+        prep = 0
+        for source_sent, target_sent in tqdm(zip(self.source.data[:100], self.target.data[:100]),
+                                             desc="Calc perp on  sents pairs",
+                                             total=100):
+            prob = self.probability_e_f(source_sent, target_sent)
+            if prob != 0:
+                prep += math.log(prob, 2)  # log base
+        return -prep
 
-    """
-"""
-# Input: english sentence e, foreign sentence f, hash of translation probabilities t, epsilon 
-# Output: probability of e given f
+    def probability_e_f(self, source_sent, target_sent, epsilon=1):
+        source_len = len(source_sent)
+        target_len = len(target_sent)
+        p_e_f = 1
+        for sw in source_sent:
+            inner_sum = 0
+            for tw in target_sent:
+                inner_sum += self.expected_alignment(sw, tw)
+            p_e_f = inner_sum * p_e_f
 
-def probability_e_f(e, f, t, epsilon=1):
-    l_e = len(e)
-    l_f = len(f)
-    p_e_f = 1
-    
-    for ew in e: # iterate over english words ew in english sentence e
-        inner_sum = 0
-        for fw in f: # iterate over foreign words fw in foreign sentence f
-            inner_sum += t[(ew, fw)]
-        p_e_f = inner_sum * p_e_f
-    
-    p_e_f = p_e_f * epsilon / (l_f**l_e)
-    
-    return p_e_f            
+        p_e_f = p_e_f * epsilon / (target_len ** source_len)
 
-"""
+        return p_e_f
+
+    def predict(self, source_sent, target_sent):
+        res = []
+        for s_idx, sw in enumerate(source_sent):
+            curr_p = self.expected_alignment(sw, self.UNIQUE_NONE)
+            probable_align = None
+
+            for t_idx, tw in enumerate(target_sent):
+                align_prob = self.expected_alignment(sw, tw)
+                if align_prob >= curr_p:  # prefer newer word in case of tie
+                    curr_p = align_prob
+                    probable_align = t_idx
+
+            res.append(f"{s_idx}-{probable_align}")
+
+        return " ".join(res)
+
+    def save_probs(self):
+        with open(self.saved_weight_fn, 'wb') as f:
+            np.save(f, self.prob_ef_expected_alignment)
+
+
+    def load_probs(self, path_to_probs):
+        with open(os.path.join(path_to_probs, self.saved_weight_fn), 'rb') as f:
+            self.prob_ef_expected_alignment = np.load(f)
+
+
 
 if __name__ == '__main__':
     suf_fr = 'f'
@@ -155,4 +189,4 @@ if __name__ == '__main__':
     suf_al = 'a'
     en = Lang(suf_en)
     fr = Lang(suf_fr)
-    ibm1 = IbmModel1(en, fr, n_ep=4, early_stop=False)
+    ibm1 = IbmModel1(en, fr, n_ep=10)
