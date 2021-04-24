@@ -193,5 +193,5 @@ if __name__ == '__main__':
     suf_al = 'a'
     en = Lang(suf_en)
     fr = Lang(suf_fr)
-    ibm1 = IbmModel1(en, fr, n_ep=50, init_from_saved_w=True, early_stop=True)
+    ibm1 = IbmModel1(en, fr, n_ep=50, init_from_saved_w=False, early_stop=True)
 
