@@ -59,7 +59,7 @@ class Lang:
     def read_file(f_name: str) -> List[List[str]]:
         with open(f_name, encoding='utf-8') as f:
             lines = f.readlines()
-        res = [line.split() for line in lines][:2000]
+        res = [line.split() for line in lines]
         print(len(res))
         return res
 
