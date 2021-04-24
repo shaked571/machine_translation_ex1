@@ -59,7 +59,7 @@ class Lang:
     def read_file(f_name: str) -> List[List[str]]:
         with open(f_name, encoding='utf-8') as f:
             lines = f.readlines()
-        res = [line.split() for line in lines][:2000]
+        res = [line.split() for line in lines]#[:2000]
         print(len(res))
         return res
 
@@ -78,10 +78,10 @@ class IbmModel1:
         self.target: Lang = target
         self.n_ep: int = n_ep
         self.early_stop: bool = early_stop
-        self.prob_ef_expected_alignment = self.init_uniform_prob()
         if init_from_saved_w:
-            prob_ef_expected_alignment = self.load_probs(path_to_probs)
+            self.prob_ef_expected_alignment = self.load_probs(path_to_probs)
         else:
+            self.prob_ef_expected_alignment = self.init_uniform_prob()
             self.perplexities = [np.inf]
             self.algo()
             self.perplexities.pop(0)  # remove the first
@@ -183,8 +183,8 @@ class IbmModel1:
         else:
             path = os.path.join(path_to_probs, self.saved_weight_fn)
         with open(path, 'rb') as f:
-            self.prob_ef_expected_alignment = np.load(f)
-
+            prob_ef_expected_alignment = np.load(f)
+        return prob_ef_expected_alignment
 
 
 if __name__ == '__main__':
@@ -193,4 +193,5 @@ if __name__ == '__main__':
     suf_al = 'a'
     en = Lang(suf_en)
     fr = Lang(suf_fr)
-    ibm1 = IbmModel1(en, fr, n_ep=10)
+    ibm1 = IbmModel1(en, fr, n_ep=50, init_from_saved_w=True, early_stop=True)
+
