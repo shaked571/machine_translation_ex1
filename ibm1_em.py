@@ -98,7 +98,7 @@ class IbmModel1:
             curr_perp = self.calc_perp()
             self.logger.info(f"epoch {epoch} perplexity: {curr_perp}")
             self.perplexities.append(curr_perp)
-            if self.early_stop and curr_perp - 5 > self.perplexities[-1]:
+            if self.early_stop and curr_perp - 20 > self.perplexities[-1]:
                 break
             # E step
             count_e_f = np.zeros((self.source.unique, self.target.unique))
@@ -178,7 +178,11 @@ class IbmModel1:
 
 
     def load_probs(self, path_to_probs):
-        with open(os.path.join(path_to_probs, self.saved_weight_fn), 'rb') as f:
+        if path_to_probs is None:
+            path = self.saved_weight_fn
+        else:
+            path = os.path.join(path_to_probs, self.saved_weight_fn)
+        with open(path, 'rb') as f:
             self.prob_ef_expected_alignment = np.load(f)
 
 
