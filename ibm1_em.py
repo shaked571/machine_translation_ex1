@@ -59,7 +59,7 @@ class Lang:
     def read_file(f_name: str) -> List[List[str]]:
         with open(f_name, encoding='utf-8') as f:
             lines = f.readlines()
-        res = [line.split() for line in lines]
+        res = [line.split() for line in lines][:10000]
         print(len(res))
         return res
 
@@ -70,7 +70,7 @@ class Lang:
 
 class IbmModel1:
     UNIQUE_NONE = '*None*'
-    saved_weight_fn = 'ibm1_p.npy'
+    saved_weight_fn = 'ibm1_p.pkl'
     def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False, path_to_probs=None):
         self.logger = logging.getLogger("IBM_Model1")
         self.source: Lang = source
@@ -79,6 +79,7 @@ class IbmModel1:
         self.n_ep: int = n_ep
         self.early_stop: bool = early_stop
         if init_from_saved_w:
+            self.logger.info("loading...")
             self.prob_ef_expected_alignment = self.load_probs(path_to_probs)
         else:
             self.prob_ef_expected_alignment = self.init_uniform_prob()
@@ -92,6 +93,7 @@ class IbmModel1:
         self.source.unique += 1
         self.source.w_index[self.UNIQUE_NONE] = self.source.unique - 1
 
+
     def algo(self):
 
         for epoch in tqdm(range(self.n_ep), desc="epoch num", total=self.n_ep):
@@ -100,10 +102,11 @@ class IbmModel1:
             self.perplexities.append(curr_perp)
             print(curr_perp)
             print(self.perplexities[-2])
-            if self.early_stop and curr_perp + 3 > self.perplexities[-2]:
+            if self.early_stop and curr_perp + 20 > self.perplexities[-2]:
                 self.logger.info("Doing early stopping, the model converged.")
                 break
             # E step
+
             count_e_f = defaultdict(lambda: defaultdict(int))
             total_f = np.zeros(self.target.unique)  # all expected alignment of f (target)
             for source_sent, target_sent in tqdm(zip(self.source.data, self.target.data),
@@ -124,15 +127,21 @@ class IbmModel1:
             for s_w, s_w_count in tqdm(count_e_f.items(), desc='calculating vocab', total=len(count_e_f)):
                 for t_w, val in s_w_count.items():
                     upd_prob = val / total_f[self.target.w_index[t_w]]
-                    self.prob_ef_expected_alignment[self.source.w_index[s_w], self.target.w_index[t_w]] = upd_prob
+                    self.prob_ef_expected_alignment[t_w][s_w] = upd_prob
 
     def expected_alignment(self, s_w, t_w):
-        return self.prob_ef_expected_alignment[self.source.w_index[s_w], self.target.w_index[t_w]]
+        return self.prob_ef_expected_alignment[t_w][s_w]
+
+    # def init_uniform_prob(self):
+    #     prob_ef = np.ones((self.source.unique, self.target.unique))
+    #     print((self.source.unique, self.target.unique))
+    #     prob_ef /= self.source.unique
+    #     return prob_ef
 
     def init_uniform_prob(self):
-        prob_ef = np.ones((self.source.unique, self.target.unique))
-        prob_ef /= self.source.unique
+        prob_ef = defaultdict(lambda: defaultdict(lambda: 1 / self.source.unique))
         return prob_ef
+
 
     def calc_perp(self, ):
         prep = 0
@@ -160,23 +169,30 @@ class IbmModel1:
 
     def predict(self, source_sent, target_sent):
         res = []
-        for s_idx, sw in enumerate(source_sent):
-            curr_p = self.expected_alignment(sw, self.UNIQUE_NONE)
+
+        for s_idx, tw in enumerate(target_sent):
+            curr_p = self.expected_alignment( self.UNIQUE_NONE,tw)
             probable_align = None
 
-            for t_idx, tw in enumerate(target_sent):
+            for t_idx, sw in enumerate(source_sent):
                 align_prob = self.expected_alignment(sw, tw)
                 if align_prob >= curr_p:  # prefer newer word in case of tie
                     curr_p = align_prob
                     probable_align = t_idx
 
             res.append(f"{s_idx}-{probable_align}")
-
-        return " ".join(res)
+        str_out = " ".join(res)
+        str_out =str_out + "\n"
+        return str_out
 
     def save_probs(self):
+        self.logger.info("Saving probs...")
+        for k, v in self.prob_ef_expected_alignment.items():
+            self.prob_ef_expected_alignment[k] = dict(v)
+        self.prob_ef_expected_alignment = dict(self.prob_ef_expected_alignment)
+
         with open(self.saved_weight_fn, 'wb') as f:
-            np.save(f, self.prob_ef_expected_alignment)
+            pickle.dump(dict(self.prob_ef_expected_alignment), f, pickle.HIGHEST_PROTOCOL)
 
 
     def load_probs(self, path_to_probs):
@@ -185,8 +201,18 @@ class IbmModel1:
         else:
             path = os.path.join(path_to_probs, self.saved_weight_fn)
         with open(path, 'rb') as f:
-            prob_ef_expected_alignment = np.load(f)
+            prob_ef_expected_alignment = pickle.load(f)
+
         return prob_ef_expected_alignment
+
+    def predict_all(self):
+        res = []
+        for source_sent, target_sent in tqdm(zip(self.source.data, self.target.data),
+                                             desc="preddicting sents", total=len(self.source.data)):
+            res.append(self.predict(source_sent, target_sent))
+        with open("prediction.txt", mode='w') as f:
+            f.writelines(res)
+
 
 
 if __name__ == '__main__':
@@ -195,5 +221,9 @@ if __name__ == '__main__':
     suf_al = 'a'
     en = Lang(suf_en)
     fr = Lang(suf_fr)
-    ibm1 = IbmModel1(en, fr, n_ep=500, init_from_saved_w=False, early_stop=True)
+    ibm1 = IbmModel1(en, fr, n_ep=100, init_from_saved_w=False, early_stop=True)
+    ibm1.predict_all()
+    
+    
+
 
