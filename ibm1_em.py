@@ -5,7 +5,7 @@ from typing import List
 import itertools
 import logging
 import os
-from collections import Counter
+from collections import Counter, defaultdict
 import numpy as np
 from tqdm import tqdm
 import pickle
@@ -59,7 +59,7 @@ class Lang:
     def read_file(f_name: str) -> List[List[str]]:
         with open(f_name, encoding='utf-8') as f:
             lines = f.readlines()
-        res = [line.split() for line in lines]#[:2000]
+        res = [line.split() for line in lines]
         print(len(res))
         return res
 
@@ -98,10 +98,10 @@ class IbmModel1:
             curr_perp = self.calc_perp()
             self.logger.info(f"epoch {epoch} perplexity: {curr_perp}")
             self.perplexities.append(curr_perp)
-            if self.early_stop and curr_perp - 20 > self.perplexities[-1]:
+            if self.early_stop and curr_perp - 3 > self.perplexities[-1]:
                 break
             # E step
-            count_e_f = np.zeros((self.source.unique, self.target.unique))
+            count_e_f = defaultdict(lambda: defaultdict(int))
             total_f = np.zeros(self.target.unique)  # all expected alignment of f (target)
             for source_sent, target_sent in tqdm(zip(self.source.data, self.target.data),
                                                  desc="Iterate all sents pairs", total=len(self.source.data)):
@@ -115,13 +115,12 @@ class IbmModel1:
                 for s_w, t_w in itertools.product(source_sent, target_sent):
                     expected = self.expected_alignment(s_w, t_w)
                     collected_count = expected / s_total[s_w]
-                    count_e_f[self.source.w_index[s_w], self.target.w_index[t_w]] += collected_count
+                    count_e_f[s_w][t_w] += collected_count
                     total_f[self.target.w_index[t_w]] += collected_count
             # M step
-            for s_w in tqdm(self.source.voc, desc='calculating vocab', total=self.source.unique):
-                for t_w in self.target.voc:
-                    upd_prob = count_e_f[self.source.w_index[s_w], self.target.w_index[t_w]] / total_f[
-                        self.target.w_index[t_w]]
+            for s_w, s_w_count in tqdm(count_e_f.items(), desc='calculating vocab', total=len(count_e_f)):
+                for t_w, val in s_w_count.items():
+                    upd_prob = val / total_f[self.target.w_index[t_w]]
                     self.prob_ef_expected_alignment[self.source.w_index[s_w], self.target.w_index[t_w]] = upd_prob
 
     def expected_alignment(self, s_w, t_w):
