@@ -102,7 +102,7 @@ class IbmModel1:
             self.perplexities.append(curr_perp)
             print(curr_perp)
             print(self.perplexities[-2])
-            if self.early_stop and curr_perp + 20 > self.perplexities[-2]:
+            if self.early_stop and curr_perp + 10 > self.perplexities[-2]:
                 self.logger.info("Doing early stopping, the model converged.")
                 break
             # E step
@@ -132,14 +132,10 @@ class IbmModel1:
     def expected_alignment(self, s_w, t_w):
         return self.prob_ef_expected_alignment[t_w][s_w]
 
-    # def init_uniform_prob(self):
-    #     prob_ef = np.ones((self.source.unique, self.target.unique))
-    #     print((self.source.unique, self.target.unique))
-    #     prob_ef /= self.source.unique
-    #     return prob_ef
+
 
     def init_uniform_prob(self):
-        prob_ef = defaultdict(lambda: defaultdict(lambda: 1 / self.source.unique))
+        prob_ef = defaultdict(lambda: defaultdict(lambda: 1 / self.target.unique))
         return prob_ef
 
 
@@ -179,8 +175,8 @@ class IbmModel1:
                 if align_prob >= curr_p:  # prefer newer word in case of tie
                     curr_p = align_prob
                     probable_align = t_idx
-
-            res.append(f"{s_idx}-{probable_align}")
+            if probable_align != None:
+                res.append(f"{s_idx}-{probable_align}")
         str_out = " ".join(res)
         str_out =str_out + "\n"
         return str_out
