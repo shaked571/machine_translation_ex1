@@ -104,7 +104,7 @@ class IbmModel1:
             self.perplexities.append(curr_perp)
             print(curr_perp)
             print(self.perplexities[-2])
-            if self.early_stop and curr_perp + 10 > self.perplexities[-2]:
+            if self.early_stop and curr_perp + 3 > self.perplexities[-2]:
                 self.logger.info("Doing early stopping, the model converged.")
                 break
             # E step
@@ -117,8 +117,6 @@ class IbmModel1:
                 source_sent = [self.UNIQUE_NONE] + source_sent  # Adding Blank word in the beginning
 
                 s_total = defaultdict(int)  # count
-                # for s_w, t_w in itertools.product(source_sent, target_sent):
-                #     s_total[s_w] += self.expected_alignment(s_w, t_w)
                 for s_w in source_sent:
                     s_total[s_w] = 0
                     for t_w in target_sent:
@@ -172,20 +170,19 @@ class IbmModel1:
 
     def predict(self, source_sent, target_sent):
         res = []
-        source_sent = [self.UNIQUE_NONE] + source_sent
         for t_idx, tw in enumerate(target_sent):
-            curr_p = 0  # self.expected_alignment(self.UNIQUE_NONE, tw)
-            probable_align = None
+            curr_p = self.expected_alignment(self.UNIQUE_NONE, tw)
+            probable_align = self.UNIQUE_NONE
 
             for s_idx, sw in enumerate(source_sent):
                 align_prob = self.expected_alignment(sw, tw)
                 if align_prob >= curr_p:  # prefer newer word in case of tie
                     curr_p = align_prob
-                    probable_align = s_idx - 1
-            if probable_align != -1:
+                    probable_align = s_idx
+            if probable_align != self.UNIQUE_NONE:
                 res.append(f"{t_idx}-{probable_align}")
         str_out = " ".join(res)
-        str_out = str_out + "\n"
+        str_out =str_out + "\n"
         return str_out
 
     def save_probs(self):
@@ -227,7 +224,7 @@ if __name__ == '__main__':
     suf_al = 'a'
     en = Lang(suf_en)
     fr = Lang(suf_fr)
-    ibm1 = IbmModel1(en, fr, n_ep=100, init_from_saved_w=False, early_stop=True)
+    ibm1 = IbmModel1(en, fr, n_ep=100, init_from_saved_w=True, early_stop=True)
     ibm1.predict_all()
     
     
