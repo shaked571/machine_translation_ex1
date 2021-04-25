@@ -1,3 +1,4 @@
+import functools
 import math
 import sys
 from datetime import datetime
@@ -109,25 +110,30 @@ class IbmModel1:
             # E step
 
             count_e_f = defaultdict(lambda: defaultdict(int))
-            total_f = np.zeros(self.target.unique)  # all expected alignment of f (target)
+            total_f = defaultdict(int)  # all expected alignment of f (target)
             for source_sent, target_sent in tqdm(zip(self.source.data, self.target.data),
                                                  desc="Iterate all sents pairs", total=len(self.source.data)):
                 # SENTENCE CONTEXT
                 source_sent = [self.UNIQUE_NONE] + source_sent  # Adding Blank word in the beginning
 
-                s_total = {w: 0 for w in source_sent}  # count
-                for s_w, t_w in itertools.product(source_sent, target_sent):
-                    s_total[s_w] += self.expected_alignment(s_w, t_w)
+                s_total = defaultdict(int)  # count
+                # for s_w, t_w in itertools.product(source_sent, target_sent):
+                #     s_total[s_w] += self.expected_alignment(s_w, t_w)
+                for s_w in source_sent:
+                    s_total[s_w] = 0
+                    for t_w in target_sent:
+                        s_total[s_w] += self.expected_alignment(s_w, t_w)
 
-                for s_w, t_w in itertools.product(source_sent, target_sent):
-                    expected = self.expected_alignment(s_w, t_w)
-                    collected_count = expected / s_total[s_w]
-                    count_e_f[t_w][s_w] += collected_count
-                    total_f[self.target.w_index[t_w]] += collected_count
+                for s_w in source_sent:
+                    for t_w in target_sent:
+                        expected = self.expected_alignment(s_w, t_w)
+                        collected_count = expected / s_total[s_w]
+                        count_e_f[t_w][s_w] += collected_count
+                        total_f[t_w] += collected_count
             # M step
             for t_w, t_w_count in tqdm(count_e_f.items(), desc='calculating vocab', total=len(count_e_f)):
                 for s_w, val in t_w_count.items():
-                    upd_prob = val / total_f[self.target.w_index[t_w]]
+                    upd_prob = val / total_f[t_w]
                     self.prob_ef_expected_alignment[t_w][s_w] = upd_prob
 
     def expected_alignment(self, s_w, t_w):
@@ -150,7 +156,7 @@ class IbmModel1:
                 prep += math.log(prob, 2)  # log base
         return -prep
 
-    def probability_e_f(self, source_sent, target_sent, epsilon=1):
+    def probability_e_f(self, source_sent, target_sent):
         source_len = len(source_sent)
         target_len = len(target_sent)
         p_e_f = 1
@@ -160,26 +166,26 @@ class IbmModel1:
                 inner_sum += self.expected_alignment(sw, tw)
             p_e_f = inner_sum * p_e_f
 
-        p_e_f = p_e_f * epsilon / (target_len ** source_len)
+        p_e_f = p_e_f / (target_len ** source_len)
 
         return p_e_f
 
     def predict(self, source_sent, target_sent):
         res = []
-
-        for s_idx, tw in enumerate(target_sent):
-            curr_p = self.expected_alignment( self.UNIQUE_NONE,tw)
+        source_sent = [self.UNIQUE_NONE] + source_sent
+        for t_idx, tw in enumerate(target_sent):
+            curr_p = 0  # self.expected_alignment(self.UNIQUE_NONE, tw)
             probable_align = None
 
-            for t_idx, sw in enumerate(source_sent):
+            for s_idx, sw in enumerate(source_sent):
                 align_prob = self.expected_alignment(sw, tw)
                 if align_prob >= curr_p:  # prefer newer word in case of tie
                     curr_p = align_prob
-                    probable_align = t_idx
-            if probable_align != None:
-                res.append(f"{s_idx}-{probable_align}")
+                    probable_align = s_idx - 1
+            if probable_align != -1:
+                res.append(f"{t_idx}-{probable_align}")
         str_out = " ".join(res)
-        str_out =str_out + "\n"
+        str_out = str_out + "\n"
         return str_out
 
     def save_probs(self):
@@ -209,6 +215,9 @@ class IbmModel1:
             res.append(self.predict(source_sent, target_sent))
         with open("prediction.txt", mode='w') as f:
             f.writelines(res)
+
+
+
 
 # class IbmModel2:
 
