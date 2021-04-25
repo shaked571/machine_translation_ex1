@@ -104,7 +104,7 @@ class IbmModel1:
             self.perplexities.append(curr_perp)
             print(curr_perp)
             print(self.perplexities[-2])
-            if self.early_stop and curr_perp + 3 > self.perplexities[-2]:
+            if self.early_stop and curr_perp + 1 > self.perplexities[-2]:
                 self.logger.info("Doing early stopping, the model converged.")
                 break
             # E step
@@ -224,7 +224,7 @@ if __name__ == '__main__':
     suf_al = 'a'
     en = Lang(suf_en)
     fr = Lang(suf_fr)
-    ibm1 = IbmModel1(en, fr, n_ep=100, init_from_saved_w=True, early_stop=True)
+    ibm1 = IbmModel1(en, fr, n_ep=100, init_from_saved_w=False, early_stop=True)
     ibm1.predict_all()
     
     
