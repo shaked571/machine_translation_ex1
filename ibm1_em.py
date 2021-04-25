@@ -71,13 +71,15 @@ class Lang:
 class IbmModel1:
     UNIQUE_NONE = '*None*'
     saved_weight_fn = 'ibm1_p.pkl'
-    def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False, path_to_probs=None):
+    def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False, path_to_probs=None, saved_weight_fn=None):
         self.logger = logging.getLogger("IBM_Model1")
         self.source: Lang = source
         self.add_special_null()
         self.target: Lang = target
         self.n_ep: int = n_ep
         self.early_stop: bool = early_stop
+        if saved_weight_fn is not None:
+            self.saved_weight_fn = saved_weight_fn
         if init_from_saved_w:
             self.logger.info("loading...")
             self.prob_ef_expected_alignment = self.load_probs(path_to_probs)
@@ -95,7 +97,6 @@ class IbmModel1:
 
 
     def algo(self):
-
         for epoch in tqdm(range(self.n_ep), desc="epoch num", total=self.n_ep):
             curr_perp = self.calc_perp()
             self.logger.info(f"epoch {epoch} perplexity: {curr_perp}")
@@ -121,11 +122,11 @@ class IbmModel1:
                 for s_w, t_w in itertools.product(source_sent, target_sent):
                     expected = self.expected_alignment(s_w, t_w)
                     collected_count = expected / s_total[s_w]
-                    count_e_f[s_w][t_w] += collected_count
+                    count_e_f[t_w][s_w] += collected_count
                     total_f[self.target.w_index[t_w]] += collected_count
             # M step
-            for s_w, s_w_count in tqdm(count_e_f.items(), desc='calculating vocab', total=len(count_e_f)):
-                for t_w, val in s_w_count.items():
+            for t_w, t_w_count in tqdm(count_e_f.items(), desc='calculating vocab', total=len(count_e_f)):
+                for s_w, val in t_w_count.items():
                     upd_prob = val / total_f[self.target.w_index[t_w]]
                     self.prob_ef_expected_alignment[t_w][s_w] = upd_prob
 
@@ -209,7 +210,7 @@ class IbmModel1:
         with open("prediction.txt", mode='w') as f:
             f.writelines(res)
 
-
+# class IbmModel2:
 
 if __name__ == '__main__':
     suf_fr = 'f'
