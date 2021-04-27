@@ -455,7 +455,7 @@ if __name__ == '__main__':
     elif args.model == 2:
         model = IbmModel2(en, fr, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop)
     else:
-        ValueError("model supports only 1 or 2")
+        raise ValueError("model supports only 1 or 2")
     model.predict_all()
 
 
