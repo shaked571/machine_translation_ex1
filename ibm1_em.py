@@ -258,7 +258,7 @@ class IbmModel2(IbmModel):
     saved_distortion_fn = 'ibm2_distortion.pkl'
     DUMMY_WORD  = "*DUMMY*FOR*LEN*"
     def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False,
-                 path_to_probs=None, saved_weight_fn=None, saved_distortion_fn=None,use_mode_1=False):
+                 path_to_probs=None, saved_weight_fn=None, saved_distortion_fn=None,use_model_1=False):
         super().__init__(source, target, n_ep, early_stop,  "IBM_Model2")
         self.saved_weight_fn = 'ibm2_p.pkl'
         self.source: Lang = self.add_special_null(source)
