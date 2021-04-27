@@ -1,6 +1,7 @@
 import abc
 import argparse
 import functools
+import json
 import math
 import sys
 from datetime import datetime
@@ -51,9 +52,10 @@ logging.basicConfig(
 class Lang:
     base_name = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'data', 'hansards.')
 
-    def __init__(self, suf, number_of_lines=None):
+    def __init__(self, suf, number_of_lines=None, do_lowe_case=False):
         self.suf = suf
         self.logger = logging.getLogger(f"lang-{self.suf}")
+        self.do_lower_case = do_lowe_case
         self.number_of_lines = number_of_lines
         self.data = self.read_file(self.base_name + self.suf)
         self.voc = Counter(self.flatten(self.data))
@@ -64,7 +66,11 @@ class Lang:
         with open(f_name, encoding='utf-8') as f:
             lines = f.readlines()
 
-        res = [line.split() for line in lines]
+        if self.do_lower_case:
+            res = [[w.lower() for w in line.split()] for line in lines]
+        else:
+            res = [line.split() for line in lines]
+
         if self.number_of_lines != None:
             res = res[:self.number_of_lines]
         self.logger.info(f"using {len(res)} lines")
@@ -249,7 +255,7 @@ class IbmModel2(IbmModel):
     saved_distortion_fn = 'ibm2_distortion.pkl'
     DUMMY_WORD  = "*DUMMY*FOR*LEN*"
     def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False,
-                 path_to_probs=None, saved_weight_fn=None, path_to_distortion=None):
+                 path_to_probs=None, saved_weight_fn=None, saved_distortion_fn=None):
         super().__init__(source, target, n_ep, early_stop)
         self.model_name = "IBM_Model2"
         self.logger = logging.getLogger(self.model_name)
@@ -258,11 +264,12 @@ class IbmModel2(IbmModel):
         self.n_ep: int = n_ep
         if saved_weight_fn is not None:
             self.saved_weight_fn = saved_weight_fn
-
+        if saved_distortion_fn is not None:
+            self.saved_distortion_fn = saved_distortion_fn
         if init_from_saved_w:
             self.logger.info("loading...")
             self.prob_ef_expected_alignment = self.load_probs(path_to_probs, self.saved_weight_fn)
-            self.distortion_table = self.load_probs(path_to_distortion, self.saved_distortion_fn)
+            self.distortion_table = self.load_probs(path_to_probs, self.saved_distortion_fn)
 
         else:
             self.prob_ef_expected_alignment = self.init_uniform_prob()
@@ -289,18 +296,15 @@ class IbmModel2(IbmModel):
         self.prob_ef_expected_alignment = dict(self.prob_ef_expected_alignment)
         with open(self.saved_weight_fn, 'wb') as f:
             pickle.dump(dict(self.prob_ef_expected_alignment), f, pickle.HIGHEST_PROTOCOL)
-
         for k, v in self.distortion_table.items():
-            self.prob_ef_expected_alignment[k] = dict(v)
-            for k1, v1 in v.items():
-                v[k1] = dict(v1)
-                for k2, v2 in v1.items():
-                    v1[k2] = dict(v2)
-                    for k3, v3 in v2.items():
-                        v2[k3] = dict(v3)
-        self.prob_ef_expected_alignment = dict(self.prob_ef_expected_alignment)
-        with open(self.saved_weight_fn, 'wb') as f:
-            pickle.dump(dict(self.prob_ef_expected_alignment), f, pickle.HIGHEST_PROTOCOL)
+            self.distortion_table[k] = dict(v)
+            for k1, v1 in self.distortion_table[k].items():
+                self.distortion_table[k][k1] = dict(v1)
+                for k2, v2 in self.distortion_table[k][k1].items():
+                    self.distortion_table[k][k1][k2] = dict(v2)
+        self.distortion_table = dict(self.distortion_table)
+        with open(self.saved_distortion_fn, 'wb') as f:
+            pickle.dump(self.distortion_table, f, pickle.HIGHEST_PROTOCOL)
 
 
 
@@ -375,23 +379,19 @@ class IbmModel2(IbmModel):
 
     def predict(self, source_sent, target_sent):
             res = []
-            source_sent = [self.UNIQUE_NONE] + source_sent
             target_len = len(target_sent)
             source_len = len(source_sent)
-            for t_idx, tw in enumerate(target_sent):
+            for idx_t, t_w in enumerate(target_sent):
                 # Initialize trg_word to align with the NULL token
-                t_idx += 1
-                best_prob = self.get_expected_prob(0, t_idx, self.UNIQUE_NONE, source_len, tw, target_len)  #TODO see if the index match
+                best_prob = self.get_expected_prob(0, idx_t+1, self.UNIQUE_NONE, source_len, t_w, target_len)  #TODO see if the index match
                 probable_align = self.UNIQUE_NONE
-                for s_idx, sw in enumerate(source_sent):
-                    alignment = self.expected_alignment(sw, tw)
-                    distortion = self.expected_distortion(s_idx, t_idx, target_len, source_len)
-                    cur_val = alignment * distortion
+                for idx_s, s_w in enumerate(source_sent):
+                    cur_val =self.get_expected_prob( idx_s, idx_t+1, s_w, source_len, t_w, target_len)
                     if cur_val >= best_prob:
                         best_prob = cur_val
-                        probable_align = s_idx - 1 # we added none now we take a step back
-                    if probable_align != self.UNIQUE_NONE:
-                        res.append(f"{t_idx}-{probable_align}")
+                        probable_align = idx_s   #- 1 # we added none now we take a step back
+                if probable_align != self.UNIQUE_NONE:
+                    res.append(f"{idx_t }-{probable_align}")
             str_out = " ".join(res)
             str_out =str_out + "\n"
             return str_out
@@ -440,7 +440,7 @@ if __name__ == '__main__':
     parser.add_argument('-m', '--model', help='ibm model {1,2} ', default=None, type=int)
     parser.add_argument('-n', '--num_of_lines', help='Number of lines to use', default=None, type=int)
     parser.add_argument('-e', '--epochs', help='Number of epochs', default=5, type=int)
-    # parser.add_argument('-d', '--diagonal', help='Prefer diagonal', action='store_true')
+    parser.add_argument('-lc', '--lower_case', help='lower case all token', action='store_true')
     parser.add_argument('-i', '--init_from_saved', help='init weights from saved pkl', action='store_true')
     parser.add_argument('-p', '--p2we', help='path to saved weights',  default=None)
     parser.add_argument('-s', '--early_stop', action='store_true')
@@ -448,8 +448,8 @@ if __name__ == '__main__':
     suf_fr = 'f'
     suf_en = 'e'
     suf_al = 'a'
-    en = Lang(suf_en, args.num_of_lines)
-    fr = Lang(suf_fr, args.num_of_lines)
+    en = Lang(suf_en, args.num_of_lines, args.lower_case)
+    fr = Lang(suf_fr, args.num_of_lines, args.lower_case)
     if args.model == 1:
         model = IbmModel1(en, fr, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we )
     elif args.model == 2:
