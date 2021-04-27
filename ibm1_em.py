@@ -97,7 +97,7 @@ class IbmModel(abc.ABC):
 
 
     def expected_alignment(self, s_w, t_w):
-        return self.prob_ef_expected_alignment[t_w][s_w]
+        return self.prob_ef_expected_alignment[s_w][t_w]
 
 
     def add_special_null(self, lang):
@@ -201,13 +201,13 @@ class IbmModel1(IbmModel):
                     for t_w in target_sent:
                         expected = self.expected_alignment(s_w, t_w)
                         collected_count = expected / s_total[s_w]
-                        count_e_f[t_w][s_w] += collected_count
-                        total_f[t_w] += collected_count
+                        count_e_f[s_w][t_w] += collected_count
+                        total_f[s_w] += collected_count
             # M step
-            for t_w, t_w_count in tqdm(count_e_f.items(), desc='calculating vocab', total=len(count_e_f)):
-                for s_w, val in t_w_count.items():
-                    upd_prob = val / total_f[t_w]
-                    self.prob_ef_expected_alignment[t_w][s_w] = upd_prob
+            for s_w, s_w_count in tqdm(count_e_f.items(), desc='calculating vocab', total=len(count_e_f)):
+                for t_w, val in s_w_count.items():
+                    upd_prob = val / total_f[s_w]
+                    self.prob_ef_expected_alignment[s_w][t_w] = upd_prob
 
 
 
@@ -450,9 +450,9 @@ if __name__ == '__main__':
     en = Lang(suf_en, args.num_of_lines, args.lower_case)
     fr = Lang(suf_fr, args.num_of_lines, args.lower_case)
     if args.model == 1:
-        model = IbmModel1(en, fr, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we)
+        model = IbmModel1(fr, en, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we)
     elif args.model == 2:
-        model = IbmModel2(en, fr, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we, use_model_1=args.use_model_1)
+        model = IbmModel2(fr, en, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we, use_model_1=args.use_model_1)
     else:
         raise ValueError("model supports only 1 or 2")
     extra_info = ''
