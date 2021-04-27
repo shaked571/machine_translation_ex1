@@ -345,9 +345,9 @@ class IbmModel2(IbmModel):
                         s_total[s_w] += self.get_expected_prob(idx_s, idx_t, s_w, s_len, t_w, t_len)
                         assert idx_t <= len(target_sent)
 
-                for idx_s, s_w in enumerate(source_sent):
-                    for idx_t, t_w in enumerate(target_sent):
-                        idx_t += 1
+                for idx_t, t_w in enumerate(target_sent):
+                    idx_t += 1
+                    for idx_s, s_w in enumerate(source_sent):
                         expected = self.get_expected_prob(idx_s, idx_t, s_w, s_len, t_w, t_len)
                         collected_count = expected / s_total[s_w]
                         # e given f
@@ -363,12 +363,12 @@ class IbmModel2(IbmModel):
                     upd_prob = val / total_f[t_w]
                     self.prob_ef_expected_alignment[t_w][s_w] = upd_prob
 
-            for s_idx, trg_indices in count_alignment.items():
-                for t_idx, src_lengths in trg_indices.items():
+            for idx_t, trg_indices in count_alignment.items():
+                for idx_s, src_lengths in trg_indices.items():
                     for s_len, trg_sentence_lengths in src_lengths.items():
                         for t_len in trg_sentence_lengths:
-                            upd_prob = count_alignment[t_idx][s_idx][s_len][t_len] / total_t_for_s[t_idx][s_idx][s_len]
-                            count_alignment[t_idx][s_idx][s_len][t_len] = upd_prob
+                            upd_prob = count_alignment[idx_t][idx_s][s_len][t_len] / total_t_for_s[idx_t][idx_s][s_len]
+                            count_alignment[idx_t][idx_s][s_len][t_len] = upd_prob
 
 
     def expected_distortion(self, idx_t, idx_s, len_s, len_t):
@@ -409,7 +409,7 @@ class IbmModel2(IbmModel):
             t_len = len(target_sent)  # We compute the sent with out the additional word
             if (s_len, t_len) not in all_lengths:
                 all_lengths.add((s_len, t_len))
-                initial_prob = 1 / (s_len + 1)  # all the words  + None
+                initial_prob = 1 / (s_len + 1)  # all the words  + Nonefv
                 for s_idx in range(s_len + 1):
                     for t_idx in range(1, t_len + 1): #need to add a dummy word for len...
                         distortion_table[t_idx][s_idx][s_len][t_len] = initial_prob
