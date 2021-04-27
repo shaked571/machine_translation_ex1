@@ -126,6 +126,7 @@ class IbmModel(abc.ABC):
                                              desc="predicting sentences", total=len(self.source.data)):
             res.append(self.predict(source_sent, target_sent))
         f_name = f"prediction_{self.model_name}_epoch_{self.n_ep}{extra_info}.txt"
+        self.logger.info(f"writing to: {f_name}")
         with open(f_name, mode='w') as f:
             f.writelines(res)
 
@@ -456,7 +457,7 @@ if __name__ == '__main__':
         raise ValueError("model supports only 1 or 2")
     extra_info = ''
     if args.num_of_lines:
-        extra_info += f'_num_of_line_{args.num}'
+        extra_info += f'_num_of_line_{args.num_of_lines}'
     if args.lower_case:
         extra_info += f'_lower_case'
     model.predict_all(extra_info)
