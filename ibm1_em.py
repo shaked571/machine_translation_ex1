@@ -238,7 +238,7 @@ class IbmModel1(IbmModel):
                     best_prob = curr_prob
                     probable_align = s_idx
             if probable_align != self.UNIQUE_NONE:
-                res.append(f"{t_idx}-{probable_align}")
+                res.append(f"{probable_align}-{t_idx}")
         str_out = " ".join(res)
         str_out =str_out + "\n"
         return str_out
