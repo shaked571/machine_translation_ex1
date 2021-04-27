@@ -193,14 +193,14 @@ class IbmModel1(IbmModel):
                 source_sent = [self.UNIQUE_NONE] + source_sent  # Adding Blank word in the beginning
 
                 s_total = defaultdict(int)  # count
-                for s_w in source_sent:
-                    for t_w in target_sent:
-                        s_total[s_w] += self.expected_alignment(s_w, t_w)
+                for t_w in target_sent:
+                    for s_w in source_sent:
+                        s_total[t_w] += self.expected_alignment(s_w, t_w)
 
-                for s_w in source_sent:
-                    for t_w in target_sent:
+                for t_w in target_sent:
+                    for s_w in source_sent:
                         expected = self.expected_alignment(s_w, t_w)
-                        collected_count = expected / s_total[s_w]
+                        collected_count = expected / s_total[t_w]
                         count_e_f[s_w][t_w] += collected_count
                         total_f[s_w] += collected_count
             # M step
