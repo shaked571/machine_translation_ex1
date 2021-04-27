@@ -354,8 +354,8 @@ class IbmModel2(IbmModel):
                         count_e_f[t_w][s_w] += collected_count
                         total_f[t_w] += collected_count
                         # alighmnet
-                        count_alignment[idx_s][idx_t][s_len][t_len] += collected_count
-                        total_t_for_s[idx_s][idx_t][s_len] += collected_count
+                        count_alignment[idx_t][idx_s][s_len][t_len] += collected_count
+                        total_t_for_s[idx_t][idx_s][s_len] += collected_count
 
             # M step
             for t_w, t_w_count in tqdm(count_e_f.items(), desc='calculating vocab', total=len(count_e_f)):
@@ -367,12 +367,15 @@ class IbmModel2(IbmModel):
                 for t_idx, src_lengths in trg_indices.items():
                     for s_len, trg_sentence_lengths in src_lengths.items():
                         for t_len in trg_sentence_lengths:
+                            upd_prob = count_alignment[t_idx][s_idx][s_len][t_len] / total_t_for_s[t_idx][s_idx][s_len]
+                            count_alignment[t_idx][s_idx][s_len][t_len] = upd_prob
 
-                            upd_prob = count_alignment[s_idx][t_idx][s_len][t_len] / total_t_for_s[s_idx][t_idx][s_len]
-                            count_alignment[s_idx][t_idx][s_len][t_len] = upd_prob
 
+    def expected_distortion(self, idx_t, idx_s, len_s, len_t):
+        return self.distortion_table[idx_t][idx_s][len_s][len_t]
+#t,s
     def get_expected_prob(self, idx_s, idx_t, s_w, source_len, t_w, target_len):
-        return self.expected_alignment(s_w, t_w) * self.expected_distortion(idx_s, idx_t, source_len, target_len)
+        return self.expected_alignment(s_w, t_w) * self.expected_distortion(idx_t, idx_s , source_len, target_len)
 
     def predict(self, source_sent, target_sent):
             res = []
@@ -409,12 +412,9 @@ class IbmModel2(IbmModel):
                 initial_prob = 1 / (s_len + 1)  # all the words  + None
                 for s_idx in range(s_len + 1):
                     for t_idx in range(1, t_len + 1): #need to add a dummy word for len...
-                        distortion_table[s_idx][t_idx][s_len][t_len] = initial_prob
+                        distortion_table[t_idx][s_idx][s_len][t_len] = initial_prob
         return distortion_table
 
-
-    def expected_distortion(self, s_w, t_w, len_s, len_t):
-        return self.distortion_table[s_w][t_w][len_s][len_t]
 
     def probability_e_f(self, source_sent, target_sent):
         source_len = len(source_sent)
