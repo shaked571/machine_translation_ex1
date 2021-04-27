@@ -275,7 +275,7 @@ class IbmModel2(IbmModel):
             self.distortion_table = self.load_probs(path_to_probs, self.saved_distortion_fn)
 
         else:
-            if use_mode_1:
+            if use_model_1:
                 self.prob_ef_expected_alignment = self.load_probs(path_to_probs, self.saved_weight_fn_model_1 )
             else:
                 self.prob_ef_expected_alignment = self.init_uniform_prob()
@@ -441,7 +441,7 @@ if __name__ == '__main__':
     parser.add_argument('-lc', '--lower_case', help='lower case all token', action='store_true')
     parser.add_argument('-i', '--init_from_saved', help='init weights from saved pkl', action='store_true')
     parser.add_argument('-p', '--p2we', help='path to saved weights',  default=None)
-    parser.add_argument('-o', '--use_mode_1', action='store_true')
+    parser.add_argument('-o', '--use_model_1', action='store_true')
     parser.add_argument('-s', '--early_stop', action='store_true')
     args = parser.parse_args()
     suf_fr = 'f'
@@ -452,7 +452,7 @@ if __name__ == '__main__':
     if args.model == 1:
         model = IbmModel1(en, fr, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we)
     elif args.model == 2:
-        model = IbmModel2(en, fr, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we, use_model_1=args.use_mode_1)
+        model = IbmModel2(en, fr, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we, use_model_1=args.use_model_1)
     else:
         raise ValueError("model supports only 1 or 2")
     extra_info = ''
