@@ -186,7 +186,7 @@ class IbmModel1(IbmModel):
                 break
             # E step
             count_e_f = defaultdict(lambda: defaultdict(int))
-            total_f = defaultdict(int)  # all expected alignment of f (target)
+            total_f = defaultdict(int)  # a dict from source (french) to  target (english) {f:e}
             for source_sent, target_sent in tqdm(zip(self.source.data, self.target.data),
                                                  desc="Iterate all sents pairs", total=len(self.source.data)):
                 # SENTENCE CONTEXT
@@ -321,7 +321,7 @@ class IbmModel2(IbmModel):
             # E step
             #1
             count_e_f = defaultdict(lambda: defaultdict(int))
-            total_f = defaultdict(int)  # all expected alignment of f (target)
+            total_f = defaultdict(int)  # a dict from source (french) to  target (english) {f:e}
             #2
             count_alignment = defaultdict(
                 lambda: defaultdict(
@@ -344,65 +344,65 @@ class IbmModel2(IbmModel):
                 source_sent = [self.UNIQUE_NONE] + source_sent  # Adding Blank word in the beginning
                 # compute normaliztion
                 s_total = defaultdict(int)  # count
-                for idx_s, s_w in enumerate(source_sent):
-                    for idx_t, t_w in enumerate(target_sent):
-                        idx_t += 1
-                        s_total[s_w] += self.get_expected_prob(idx_s, idx_t, s_w, s_len, t_w, t_len)
+                for idx_t, t_w in enumerate(target_sent):
+                    idx_t += 1
+                    for idx_s, s_w in enumerate(source_sent):
+                        s_total[t_w] += self.get_expected_prob(idx_s, idx_t, s_w, s_len, t_w, t_len)
                         assert idx_t <= len(target_sent)
 
                 for idx_t, t_w in enumerate(target_sent):
                     idx_t += 1
                     for idx_s, s_w in enumerate(source_sent):
                         expected = self.get_expected_prob(idx_s, idx_t, s_w, s_len, t_w, t_len)
-                        collected_count = expected / s_total[s_w]
+                        collected_count = expected / s_total[t_w]
                         # e given f
-                        count_e_f[t_w][s_w] += collected_count
-                        total_f[t_w] += collected_count
+                        count_e_f[s_w][t_w] += collected_count
+                        total_f[s_w] += collected_count
                         # alighmnet
-                        count_alignment[idx_t][idx_s][s_len][t_len] += collected_count
-                        total_t_for_s[idx_t][idx_s][s_len] += collected_count
+                        count_alignment[idx_s][idx_t][s_len][t_len] += collected_count
+                        total_t_for_s[idx_s][idx_t][s_len] += collected_count
 
             # M step
-            for t_w, t_w_count in tqdm(count_e_f.items(), desc='calculating vocab', total=len(count_e_f)):
-                for s_w, val in t_w_count.items():
-                    upd_prob = val / total_f[t_w]
-                    self.prob_ef_expected_alignment[t_w][s_w] = upd_prob
+            for s_w, s_w_count in tqdm(count_e_f.items(), desc='calculating vocab', total=len(count_e_f)):
+                for t_w, val in s_w_count.items():
+                    upd_prob = val / total_f[s_w]
+                    self.prob_ef_expected_alignment[s_w][t_w] = upd_prob
 
-            for idx_t, trg_indices in count_alignment.items():
-                for idx_s, src_lengths in trg_indices.items():
+            for idx_s, trg_indices in count_alignment.items():
+                for idx_t, src_lengths in trg_indices.items():
                     for s_len, trg_sentence_lengths in src_lengths.items():
                         for t_len in trg_sentence_lengths:
-                            upd_prob = count_alignment[idx_t][idx_s][s_len][t_len] / total_t_for_s[idx_t][idx_s][s_len]
-                            count_alignment[idx_t][idx_s][s_len][t_len] = upd_prob
+                            upd_prob = count_alignment[idx_s][idx_t][s_len][t_len] / total_t_for_s[idx_s][idx_t][s_len]
+                            count_alignment[idx_s][idx_t][s_len][t_len] = upd_prob
 
-    def expected_distortion(self, idx_t, idx_s, len_s, len_t):
-        return self.distortion_table[idx_t][idx_s][len_s][len_t]
+    def expected_distortion(self, idx_s, idx_t, len_s, len_t):
+        return self.distortion_table[idx_s][idx_t][len_s][len_t]
 
     def get_expected_prob(self, idx_s, idx_t, s_w, source_len, t_w, target_len):
-        return self.expected_alignment(s_w, t_w) * self.expected_distortion(idx_t, idx_s , source_len, target_len)
+        return self.expected_alignment(s_w, t_w) * self.expected_distortion(idx_s, idx_t, source_len, target_len)
 
     def predict(self, source_sent, target_sent):
             res = []
             target_len = len(target_sent)
             source_len = len(source_sent)
-            for idx_t, t_w in enumerate(target_sent):
+            for t_idx, t_w in enumerate(target_sent):
                 # Initialize trg_word to align with the NULL token
-                best_prob = self.get_expected_prob(0, idx_t+1, self.UNIQUE_NONE, source_len, t_w, target_len)  #TODO see if the index match
+                best_prob = self.get_expected_prob(0, t_idx+1, self.UNIQUE_NONE, source_len, t_w, target_len)
                 probable_align = self.UNIQUE_NONE
                 for idx_s, s_w in enumerate(source_sent):
-                    cur_val = self.get_expected_prob( idx_s, idx_t+1, s_w, source_len, t_w, target_len)
+                    cur_val = self.get_expected_prob(idx_s, t_idx+1, s_w, source_len, t_w, target_len)
                     if cur_val >= best_prob:
                         best_prob = cur_val
                         probable_align = idx_s   #- 1 # we added none now we take a step back
                 if probable_align != self.UNIQUE_NONE:
-                    res.append(f"{idx_t }-{probable_align}")
+                    res.append(f"{probable_align}-{t_idx}")
             str_out = " ".join(res)
             str_out =str_out + "\n"
             return str_out
 
     def init_distortion_uniformly(self):
-        distortion_table = defaultdict( # s_w
-            lambda: defaultdict(        # t_w
+        distortion_table = defaultdict( # s_idx
+            lambda: defaultdict(        # t_idx
                 lambda: defaultdict(    # len_s
                     lambda: defaultdict(# len_t
                         lambda: int))))
@@ -415,7 +415,7 @@ class IbmModel2(IbmModel):
                 initial_prob = 1 / (s_len + 1)  # all the words  + Nonefv
                 for s_idx in range(s_len + 1):
                     for t_idx in range(1, t_len + 1): #need to add a dummy word for len...
-                        distortion_table[t_idx][s_idx][s_len][t_len] = initial_prob
+                        distortion_table[s_idx][t_idx][s_len][t_len] = initial_prob
         return distortion_table
 
 
