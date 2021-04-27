@@ -67,7 +67,6 @@ class Lang:
             res = [[w.lower() for w in line.split()] for line in lines]
         else:
             res = [line.split() for line in lines]
-
         if self.number_of_lines != None:
             res = res[:self.number_of_lines]
         self.logger.info(f"using {len(res)} lines")
@@ -81,13 +80,20 @@ class Lang:
 class IbmModel(abc.ABC):
     UNIQUE_NONE = '*None*'
 
-    def __init__(self, source: Lang, target: Lang, n_ep=100,early_stop=True ):
-        self.model_name = None
+    def __init__(self, source: Lang, target: Lang, n_ep,early_stop, model_name):
+        self.model_name = model_name
         self.target: Lang = target
         self.source: Lang = source
         self.n_ep: int = n_ep
         self.early_stop: bool = early_stop
         self.prob_ef_expected_alignment = None
+        self.saved_weight_fn = None
+        self.saved_weight_fn_model_1 = 'ibm1_p.pkl'
+        self.logger = logging.getLogger(self.model_name)
+        self.logger.info(f"Start model: {self.model_name}")
+        self.logger.info(f"would num of epoch: {self.n_ep}")
+        self.logger.info(f"Start with early stop: {self.early_stop}")
+        self.extra_parameters = ''
 
 
     def expected_alignment(self, s_w, t_w):
@@ -114,12 +120,13 @@ class IbmModel(abc.ABC):
         prob_ef = defaultdict(lambda: defaultdict(lambda: 1 / self.target.unique))
         return prob_ef
 
-    def predict_all(self):
+    def predict_all(self, extra_info):
         res = []
         for source_sent, target_sent in tqdm(zip(self.source.data, self.target.data),
-                                             desc="preddicting sents", total=len(self.source.data)):
+                                             desc="predicting sentences", total=len(self.source.data)):
             res.append(self.predict(source_sent, target_sent))
-        with open(f"prediction_{self.model_name}.txt", mode='w') as f:
+        f_name = f"prediction_{self.model_name}_epoch_{self.n_ep}{extra_info}.txt"
+        with open(f_name, mode='w') as f:
             f.writelines(res)
 
     @abc.abstractmethod
@@ -130,13 +137,20 @@ class IbmModel(abc.ABC):
     def probability_e_f(self, source_sent, target_sent):
         pass
 
+    def save_alighnment(self) -> None:
+        self.logger.info("Saving probs...")
+        for k, v in self.prob_ef_expected_alignment.items():
+            self.prob_ef_expected_alignment[k] = dict(v)
+        self.prob_ef_expected_alignment = dict(self.prob_ef_expected_alignment)
+        with open(self.saved_weight_fn, 'wb') as f:
+            pickle.dump(dict(self.prob_ef_expected_alignment), f, pickle.HIGHEST_PROTOCOL)
+
 
 class IbmModel1(IbmModel):
-    saved_weight_fn = 'ibm1_p.pkl'
+
     def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False, path_to_probs=None, saved_weight_fn=None):
-        super(IbmModel1, self).__init__(source, target, n_ep, early_stop )
-        self.model_name = 'IBM_Model1'
-        self.logger = logging.getLogger("IBM_Model1")
+        super(IbmModel1, self).__init__(source, target, n_ep, early_stop,'IBM_Model1' )
+        self.saved_weight_fn = 'ibm1_p.pkl'
         self.source = self.add_special_null(self.source)
         if init_from_saved_w:
             self.logger.info("loading...")
@@ -229,16 +243,7 @@ class IbmModel1(IbmModel):
         return str_out
 
     def save_probs(self):
-        self.logger.info("Saving probs...")
-        for k, v in self.prob_ef_expected_alignment.items():
-            self.prob_ef_expected_alignment[k] = dict(v)
-        self.prob_ef_expected_alignment = dict(self.prob_ef_expected_alignment)
-
-        with open(self.saved_weight_fn, 'wb') as f:
-            pickle.dump(dict(self.prob_ef_expected_alignment), f, pickle.HIGHEST_PROTOCOL)
-
-
-
+        self.save_alighnment()
 
 
 #1. Add lidstone smoothing
@@ -248,14 +253,13 @@ class IbmModel1(IbmModel):
 # Add extra null words?
 
 class IbmModel2(IbmModel):
-    saved_weight_fn = 'ibm2_p.pkl'
+
     saved_distortion_fn = 'ibm2_distortion.pkl'
     DUMMY_WORD  = "*DUMMY*FOR*LEN*"
     def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False,
-                 path_to_probs=None, saved_weight_fn=None, saved_distortion_fn=None):
-        super().__init__(source, target, n_ep, early_stop)
-        self.model_name = "IBM_Model2"
-        self.logger = logging.getLogger(self.model_name)
+                 path_to_probs=None, saved_weight_fn=None, saved_distortion_fn=None,use_mode_1=False):
+        super().__init__(source, target, n_ep, early_stop,  "IBM_Model2")
+        self.saved_weight_fn = 'ibm2_p.pkl'
         self.source: Lang = self.add_special_null(source)
         #Need to add length of both sentences
         self.n_ep: int = n_ep
@@ -263,13 +267,17 @@ class IbmModel2(IbmModel):
             self.saved_weight_fn = saved_weight_fn
         if saved_distortion_fn is not None:
             self.saved_distortion_fn = saved_distortion_fn
+
         if init_from_saved_w:
             self.logger.info("loading...")
             self.prob_ef_expected_alignment = self.load_probs(path_to_probs, self.saved_weight_fn)
             self.distortion_table = self.load_probs(path_to_probs, self.saved_distortion_fn)
 
         else:
-            self.prob_ef_expected_alignment = self.init_uniform_prob()
+            if use_mode_1:
+                self.prob_ef_expected_alignment = self.load_probs(path_to_probs, self.saved_weight_fn_model_1 )
+            else:
+                self.prob_ef_expected_alignment = self.init_uniform_prob()
             self.distortion_table = self.init_distortion_uniformly()
             self.perplexities = [np.inf]
             self.algo()
@@ -283,16 +291,13 @@ class IbmModel2(IbmModel):
             path = os.path.join(path_to_probs, file_name)
         with open(path, 'rb') as f:
             prob = pickle.load(f)
-
         return prob
 
     def save_probs(self):
-        self.logger.info("Saving probs...")
-        for k, v in self.prob_ef_expected_alignment.items():
-            self.prob_ef_expected_alignment[k] = dict(v)
-        self.prob_ef_expected_alignment = dict(self.prob_ef_expected_alignment)
-        with open(self.saved_weight_fn, 'wb') as f:
-            pickle.dump(dict(self.prob_ef_expected_alignment), f, pickle.HIGHEST_PROTOCOL)
+        self.save_alighnment()
+        self.save_distortion()
+
+    def save_distortion(self):
         for k, v in self.distortion_table.items():
             self.distortion_table[k] = dict(v)
             for k1, v1 in self.distortion_table[k].items():
@@ -302,7 +307,6 @@ class IbmModel2(IbmModel):
         self.distortion_table = dict(self.distortion_table)
         with open(self.saved_distortion_fn, 'wb') as f:
             pickle.dump(self.distortion_table, f, pickle.HIGHEST_PROTOCOL)
-
 
 
     def algo(self):
@@ -370,10 +374,9 @@ class IbmModel2(IbmModel):
                             upd_prob = count_alignment[idx_t][idx_s][s_len][t_len] / total_t_for_s[idx_t][idx_s][s_len]
                             count_alignment[idx_t][idx_s][s_len][t_len] = upd_prob
 
-
     def expected_distortion(self, idx_t, idx_s, len_s, len_t):
         return self.distortion_table[idx_t][idx_s][len_s][len_t]
-#t,s
+
     def get_expected_prob(self, idx_s, idx_t, s_w, source_len, t_w, target_len):
         return self.expected_alignment(s_w, t_w) * self.expected_distortion(idx_t, idx_s , source_len, target_len)
 
@@ -386,7 +389,7 @@ class IbmModel2(IbmModel):
                 best_prob = self.get_expected_prob(0, idx_t+1, self.UNIQUE_NONE, source_len, t_w, target_len)  #TODO see if the index match
                 probable_align = self.UNIQUE_NONE
                 for idx_s, s_w in enumerate(source_sent):
-                    cur_val =self.get_expected_prob( idx_s, idx_t+1, s_w, source_len, t_w, target_len)
+                    cur_val = self.get_expected_prob( idx_s, idx_t+1, s_w, source_len, t_w, target_len)
                     if cur_val >= best_prob:
                         best_prob = cur_val
                         probable_align = idx_s   #- 1 # we added none now we take a step back
@@ -395,7 +398,6 @@ class IbmModel2(IbmModel):
             str_out = " ".join(res)
             str_out =str_out + "\n"
             return str_out
-
 
     def init_distortion_uniformly(self):
         distortion_table = defaultdict( # s_w
@@ -431,8 +433,6 @@ class IbmModel2(IbmModel):
         return p_e_f
 
 if __name__ == '__main__':
-
-
     parser = argparse.ArgumentParser(description='Aligner model')
     parser.add_argument('-m', '--model', help='ibm model {1,2} ', default=None, type=int)
     parser.add_argument('-n', '--num_of_lines', help='Number of lines to use', default=None, type=int)
@@ -440,6 +440,7 @@ if __name__ == '__main__':
     parser.add_argument('-lc', '--lower_case', help='lower case all token', action='store_true')
     parser.add_argument('-i', '--init_from_saved', help='init weights from saved pkl', action='store_true')
     parser.add_argument('-p', '--p2we', help='path to saved weights',  default=None)
+    parser.add_argument('-o', '--use_mode_1', action='store_true')
     parser.add_argument('-s', '--early_stop', action='store_true')
     args = parser.parse_args()
     suf_fr = 'f'
@@ -448,12 +449,17 @@ if __name__ == '__main__':
     en = Lang(suf_en, args.num_of_lines, args.lower_case)
     fr = Lang(suf_fr, args.num_of_lines, args.lower_case)
     if args.model == 1:
-        model = IbmModel1(en, fr, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we )
+        model = IbmModel1(en, fr, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we)
     elif args.model == 2:
-        model = IbmModel2(en, fr, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop)
+        model = IbmModel2(en, fr, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we, use_model_1=args.use_mode_1)
     else:
         raise ValueError("model supports only 1 or 2")
-    model.predict_all()
+    extra_info = ''
+    if args.num_of_lines:
+        extra_info += f'_num_of_line_{args.num}'
+    if args.lower_case:
+        extra_info += f'_lower_case'
+    model.predict_all(extra_info)
 
 
     
