@@ -1,12 +1,9 @@
 import abc
 import argparse
-import functools
-import json
 import math
 import sys
 from datetime import datetime
 from typing import List
-import itertools
 import logging
 import os
 from collections import Counter, defaultdict
@@ -358,7 +355,7 @@ class IbmModel2(IbmModel):
                         total_f[t_w] += collected_count
                         # alighmnet
                         count_alignment[idx_s][idx_t][s_len][t_len] += collected_count
-                        total_t_for_s[idx_t][s_len][t_len] += collected_count
+                        total_t_for_s[idx_s][idx_t][s_len] += collected_count
 
             # M step
             for t_w, t_w_count in tqdm(count_e_f.items(), desc='calculating vocab', total=len(count_e_f)):
@@ -371,7 +368,7 @@ class IbmModel2(IbmModel):
                     for s_len, trg_sentence_lengths in src_lengths.items():
                         for t_len in trg_sentence_lengths:
 
-                            upd_prob = count_alignment[s_idx][t_idx][s_len][t_len] / total_t_for_s[t_idx][s_len][t_len]
+                            upd_prob = count_alignment[s_idx][t_idx][s_len][t_len] / total_t_for_s[s_idx][t_idx][s_len]
                             count_alignment[s_idx][t_idx][s_len][t_len] = upd_prob
 
     def get_expected_prob(self, idx_s, idx_t, s_w, source_len, t_w, target_len):
