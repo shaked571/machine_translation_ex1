@@ -360,7 +360,7 @@ class IbmModel2(IbmModel):
                         total_f[s_w] += collected_count
                         # alighmnet
                         count_alignment[idx_s][idx_t][s_len][t_len] += collected_count
-                        total_t_for_s[idx_s][idx_t][s_len] += collected_count
+                        total_t_for_s[idx_t][s_len][t_len] += collected_count
 
             # M step
             for s_w, s_w_count in tqdm(count_e_f.items(), desc='calculating vocab', total=len(count_e_f)):
@@ -372,7 +372,7 @@ class IbmModel2(IbmModel):
                 for idx_t, src_lengths in trg_indices.items():
                     for s_len, trg_sentence_lengths in src_lengths.items():
                         for t_len in trg_sentence_lengths:
-                            upd_prob = count_alignment[idx_s][idx_t][s_len][t_len] / total_t_for_s[idx_s][idx_t][s_len]
+                            upd_prob = count_alignment[idx_s][idx_t][s_len][t_len] / total_t_for_s[idx_t][s_len][t_len]
                             count_alignment[idx_s][idx_t][s_len][t_len] = upd_prob
 
     def expected_distortion(self, idx_s, idx_t, len_s, len_t):
@@ -393,7 +393,7 @@ class IbmModel2(IbmModel):
                     cur_val = self.get_expected_prob(idx_s, t_idx+1, s_w, source_len, t_w, target_len)
                     if cur_val >= best_prob:
                         best_prob = cur_val
-                        probable_align = idx_s   #- 1 # we added none now we take a step back
+                        probable_align = idx_s
                 if probable_align != self.UNIQUE_NONE:
                     res.append(f"{probable_align}-{t_idx}")
             str_out = " ".join(res)
