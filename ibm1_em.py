@@ -424,14 +424,13 @@ class IbmModel2(IbmModel):
         target_len = len(target_sent)
         source_sent = [self.UNIQUE_NONE] + source_sent
         p_e_f = 1
-        for t_idx, tw in enumerate(target_sent):
-            t_idx += 1
-            max_p = 0
-            for s_idx, sw in enumerate(source_sent):
-                cur = self.get_expected_prob(s_idx, t_idx, sw, source_len, tw, target_len)
-                if cur > max_p:
-                    max_p = cur
-            p_e_f *= max_p
+        for s_idx, sw in enumerate(source_sent):
+            inner_sum = 0
+            for t_idx, tw in enumerate(target_sent):
+                t_idx += 1
+                inner_sum += self.get_expected_prob(s_idx, t_idx, sw, source_len, tw, target_len)
+            p_e_f = inner_sum * p_e_f
+        p_e_f = p_e_f / (target_len ** source_len)
         return p_e_f
 
 if __name__ == '__main__':
