@@ -360,7 +360,7 @@ class IbmModel2(IbmModel):
                         total_f[s_w] += collected_count
                         # alighmnet
                         count_alignment[idx_s][idx_t][s_len][t_len] += collected_count
-                        total_t_for_s[idx_t][s_len][t_len] += collected_count
+                        total_t_for_s[idx_s][s_len][t_len] += collected_count
 
             # M step
             for s_w, s_w_count in tqdm(count_e_f.items(), desc='calculating vocab', total=len(count_e_f)):
@@ -372,7 +372,7 @@ class IbmModel2(IbmModel):
                 for idx_t, src_lengths in trg_indices.items():
                     for s_len, trg_sentence_lengths in src_lengths.items():
                         for t_len in trg_sentence_lengths:
-                            upd_prob = count_alignment[idx_s][idx_t][s_len][t_len] / total_t_for_s[idx_t][s_len][t_len]
+                            upd_prob = count_alignment[idx_s][idx_t][s_len][t_len] / total_t_for_s[idx_s][s_len][t_len]
                             count_alignment[idx_s][idx_t][s_len][t_len] = upd_prob
 
     def expected_distortion(self, idx_s, idx_t, len_s, len_t):
@@ -424,13 +424,14 @@ class IbmModel2(IbmModel):
         target_len = len(target_sent)
         source_sent = [self.UNIQUE_NONE] + source_sent
         p_e_f = 1
-        for s_idx, sw in enumerate(source_sent):
-            inner_sum = 0
-            for t_idx, tw in enumerate(target_sent):
-                t_idx += 1
-                inner_sum += self.get_expected_prob(s_idx, t_idx, sw, source_len, tw, target_len)
-            p_e_f = inner_sum * p_e_f
-        p_e_f = p_e_f / (target_len ** source_len)
+        for t_idx, tw in enumerate(target_sent):
+            t_idx += 1
+            max_p = 0
+            for s_idx, sw in enumerate(source_sent):
+                cur = self.get_expected_prob(s_idx, t_idx, sw, source_len, tw, target_len)
+                if cur > max_p:
+                    max_p = cur
+            p_e_f *= max_p
         return p_e_f
 
 if __name__ == '__main__':
