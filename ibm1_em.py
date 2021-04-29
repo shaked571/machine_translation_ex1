@@ -389,8 +389,8 @@ class IbmModel2(IbmModel):
                 # Initialize trg_word to align with the NULL token
                 best_prob = self.get_expected_prob(0, t_idx+1, self.UNIQUE_NONE, source_len, t_w, target_len)
                 probable_align = self.UNIQUE_NONE
-                for idx_s, s_w in enumerate(source_sent):
-                    cur_val = self.get_expected_prob(idx_s, t_idx+1, s_w, source_len, t_w, target_len)
+                for idx_s in range(1, source_len):
+                    cur_val = self.get_expected_prob(idx_s, t_idx+1, source_sent[idx_s+1], source_len, t_w, target_len)
                     if cur_val >= best_prob:
                         best_prob = cur_val
                         probable_align = idx_s
