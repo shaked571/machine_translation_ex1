@@ -292,7 +292,7 @@ class IbmModel2(IbmModel):
                  change_direction=False,dont_use_null=False, lidstone=False):
         super().__init__(source, target, n_ep, early_stop,  "IBM_Model2", change_direction,dont_use_null, lidstone)
         self.saved_weight_fn = 'ibm2_p.pkl'
-        self.source: Lang = self.add_special_null(source)
+        self.source: Lang = self.add_special_null(self.source)
         #Need to add length of both sentences
         self.n_ep: int = n_ep
         if saved_weight_fn is not None:
