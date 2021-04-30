@@ -80,7 +80,7 @@ class Lang:
 class IbmModel(abc.ABC):
     UNIQUE_NONE = '*None*'
 
-    def __init__(self, source: Lang, target: Lang, n_ep,early_stop, model_name):
+    def __init__(self, source: Lang, target: Lang, n_ep,early_stop, model_name, change_direction,dont_use_null, lidstone ):
         self.model_name = model_name
         self.target: Lang = target
         self.source: Lang = source
@@ -88,6 +88,7 @@ class IbmModel(abc.ABC):
         self.early_stop: bool = early_stop
         self.prob_ef_expected_alignment = None
         self.saved_weight_fn = None
+        self.dont_use_null:bool =dont_use_null
         self.saved_weight_fn_model_1 = 'ibm1_p.pkl'
         self.logger = logging.getLogger(self.model_name)
         self.logger.info(f"Start model: {self.model_name}")
@@ -101,6 +102,8 @@ class IbmModel(abc.ABC):
 
 
     def add_special_null(self, lang):
+        if self.dont_use_null:
+            return lang
         lang.voc[self.UNIQUE_NONE] = len(lang.data)
         lang.unique += 1
         lang.w_index[self.UNIQUE_NONE] = lang.unique - 1
@@ -149,7 +152,8 @@ class IbmModel(abc.ABC):
 
 class IbmModel1(IbmModel):
 
-    def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False, path_to_probs=None, saved_weight_fn=None):
+    def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False, path_to_probs=None, saved_weight_fn=None,
+                 change_direction=False,dont_use_null=False, lidstone=False):
         super(IbmModel1, self).__init__(source, target, n_ep, early_stop,'IBM_Model1' )
         self.saved_weight_fn = 'ibm1_p.pkl'
         self.source = self.add_special_null(self.source)
@@ -190,7 +194,8 @@ class IbmModel1(IbmModel):
             for source_sent, target_sent in tqdm(zip(self.source.data, self.target.data),
                                                  desc="Iterate all sents pairs", total=len(self.source.data)):
                 # SENTENCE CONTEXT
-                source_sent = [self.UNIQUE_NONE] + source_sent  # Adding Blank word in the beginning
+                if not self.dont_use_null:
+                    source_sent = [self.UNIQUE_NONE] + source_sent  # Adding Blank word in the beginning
 
                 s_total = defaultdict(int)  # count
                 for t_w in target_sent:
@@ -230,7 +235,10 @@ class IbmModel1(IbmModel):
     def predict(self, source_sent, target_sent):
         res = []
         for t_idx, tw in enumerate(target_sent):
-            best_prob = self.expected_alignment(self.UNIQUE_NONE, tw)
+            if self.dont_use_null:
+                best_prob = 0
+            else:
+                best_prob = self.expected_alignment(self.UNIQUE_NONE, tw)
             probable_align = self.UNIQUE_NONE
             for s_idx, sw in enumerate(source_sent):
                 curr_prob = self.expected_alignment(sw, tw)
@@ -257,8 +265,9 @@ class IbmModel2(IbmModel):
 
     saved_distortion_fn = 'ibm2_distortion.pkl'
     def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False,
-                 path_to_probs=None, saved_weight_fn=None, saved_distortion_fn=None,use_model_1=False):
-        super().__init__(source, target, n_ep, early_stop,  "IBM_Model2")
+                 path_to_probs=None, saved_weight_fn=None, saved_distortion_fn=None,use_model_1=False,
+                 change_direction=False,dont_use_null=False, lidstone=False):
+        super().__init__(source, target, n_ep, early_stop,  "IBM_Model2", change_direction,dont_use_null, lidstone)
         self.saved_weight_fn = 'ibm2_p.pkl'
         self.source: Lang = self.add_special_null(source)
         #Need to add length of both sentences
@@ -339,8 +348,8 @@ class IbmModel2(IbmModel):
                 # SENTENCE CONTEXT
                 s_len = len(source_sent)
                 t_len = len(target_sent)
-
-                source_sent = [self.UNIQUE_NONE] + source_sent  # Adding Blank word in the beginning
+                if not self.dont_use_null:
+                    source_sent = [self.UNIQUE_NONE] + source_sent  # Adding Blank word in the beginning
                 # compute normaliztion
                 delta_k = defaultdict(int)  # count
                 for idx_t, t_w in enumerate(target_sent):
@@ -383,10 +392,16 @@ class IbmModel2(IbmModel):
             source_len = len(source_sent)
             for t_idx, t_w in enumerate(target_sent):
                 # Initialize trg_word to align with the NULL token
-                best_prob = self.get_expected_prob(0, t_idx, self.UNIQUE_NONE, source_len, t_w, target_len)
+                if self.dont_use_null:
+                    best_prob = 0
+                else:
+                    best_prob = self.get_expected_prob(0, t_idx, self.UNIQUE_NONE, source_len, t_w, target_len)
                 probable_align = self.UNIQUE_NONE
                 for idx_s, s_w in enumerate(source_sent):
-                    cur_val = self.get_expected_prob(idx_s+1, t_idx, s_w, source_len, t_w, target_len)
+                    if self.dont_use_null:
+                        cur_val = self.get_expected_prob(idx_s+1, t_idx, s_w, source_len, t_w, target_len)
+                    else:
+                        cur_val = self.get_expected_prob(idx_s, t_idx, s_w, source_len, t_w, target_len)
                     if cur_val >= best_prob:
                         best_prob = cur_val
                         probable_align = idx_s
@@ -408,10 +423,16 @@ class IbmModel2(IbmModel):
             len_t = len(target_sent)  # We compute the sent with out the additional word
             if (len_s, len_t) not in all_lengths:
                 all_lengths.add((len_s, len_t))
-                initial_prob = 1 / (len_s + 1)  # all the words  + Nonefv
-                for idx_s in range(len_s + 1):
-                    for idx_t in range(len_t): #need to add a dummy word for len...
-                        distortion_table[idx_t][len_s][len_t][idx_s] = initial_prob
+                if self.dont_use_null:
+                    initial_prob = 1 / (len_s)  # all the words  + Nonef
+                    for idx_s in range(len_s):
+                        for idx_t in range(len_t):
+                            distortion_table[idx_t][len_s][len_t][idx_s] = initial_prob
+                else:
+                    initial_prob = 1 / (len_s + 1)  # all the words  + Nonefv
+                    for idx_s in range(len_s + 1):
+                        for idx_t in range(len_t):
+                            distortion_table[idx_t][len_s][len_t][idx_s] = initial_prob
 
         return distortion_table
 
@@ -419,7 +440,8 @@ class IbmModel2(IbmModel):
     def probability_e_f(self, source_sent, target_sent):
         source_len = len(source_sent)
         target_len = len(target_sent)
-        source_sent = [self.UNIQUE_NONE] + source_sent
+        if not self.dont_use_null:
+            source_sent = [self.UNIQUE_NONE] + source_sent
         p_e_f = 1
         for s_idx, sw in enumerate(source_sent):
             inner_sum = 0
@@ -439,6 +461,9 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--p2we', help='path to saved weights',  default=None)
     parser.add_argument('-o', '--use_model_1', action='store_true')
     parser.add_argument('-s', '--early_stop', action='store_true')
+    parser.add_argument('-dn', '--dont_use_null', action='store_true') #TODO
+    parser.add_argument('-cd', '--change_direction', help='switch target and source' ,action='store_true') #TODO
+    parser.add_argument('-ld', '--lidstone', help='smoothing using lidstone' ,action='store_true')#TODO
     args = parser.parse_args()
     suf_fr = 'f'
     suf_en = 'e'
@@ -446,9 +471,11 @@ if __name__ == '__main__':
     en = Lang(suf_en, args.num_of_lines, args.lower_case)
     fr = Lang(suf_fr, args.num_of_lines, args.lower_case)
     if args.model == 1:
-        model = IbmModel1(fr, en, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we)
+        model = IbmModel1(fr, en, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we,
+                          change_direction=args.change_direction,dont_use_null=args.dont_use_null, lidstone=args.lidstone)
     elif args.model == 2:
-        model = IbmModel2(fr, en, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we, use_model_1=args.use_model_1)
+        model = IbmModel2(fr, en, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we, use_model_1=args.use_model_1,
+                          change_direction=args.change_direction,dont_use_null=args.dont_use_null, lidstone=args.lidstone)
     else:
         raise ValueError("model supports only 1 or 2")
     extra_info = ''
