@@ -79,16 +79,17 @@ class Lang:
 
 class IbmModel(abc.ABC):
     UNIQUE_NONE = '*None*'
-
-    def __init__(self, source: Lang, target: Lang, n_ep,early_stop, model_name, change_direction,dont_use_null, lidstone,random_init ):
+    lidstone_n = 5
+    def __init__(self, source: Lang, target: Lang, n_ep,early_stop, model_name, change_direction,dont_use_null, lidstone,random_init,lidstone_n ):
         self.model_name = model_name
         self.n_ep: int = n_ep
         self.early_stop: bool = early_stop
         self.prob_ef_expected_alignment = None
         self.saved_weight_fn = None
-        self.dont_use_null:bool =dont_use_null
-        self.lidstone:bool =lidstone
-        self.random_init=random_init
+        self.dont_use_null: bool =dont_use_null
+        self.lidstone: bool =lidstone
+        self.random_init:bool=random_init
+        self.lidstone_n:int = lidstone_n
         self.change_direction = change_direction
         if self.change_direction:
             self.target: Lang = source
@@ -102,8 +103,10 @@ class IbmModel(abc.ABC):
         self.logger.info(f"would num of epoch: {self.n_ep}")
         self.logger.info(f"Start with early stop: {self.early_stop}")
         self.logger.info(f"Start with lidstone: {self.lidstone}")
+        self.logger.info(f"Start with lidstone_n: {self.lidstone_n}")
         self.logger.info(f"Start with using null: {not self.dont_use_null}")
         self.logger.info(f"Start with change direction: {self.change_direction}")
+        self.logger.info(f"Start with random init: {self.random_init}")
         self.extra_parameters = ''
 
 
@@ -185,8 +188,8 @@ class IbmModel(abc.ABC):
 class IbmModel1(IbmModel):
 
     def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False, path_to_probs=None, saved_weight_fn=None,
-                 change_direction=False,dont_use_null=False, lidstone=False, random_init=False):
-        super(IbmModel1, self).__init__(source, target, n_ep, early_stop,'IBM_Model1',change_direction,dont_use_null,lidstone,random_init)
+                 change_direction=False,dont_use_null=False, lidstone=False, random_init=False,lidstone_n=5):
+        super(IbmModel1, self).__init__(source, target, n_ep, early_stop,'IBM_Model1',change_direction,dont_use_null,lidstone,random_init,lidstone_n)
         self.saved_weight_fn = 'ibm1_p.pkl'
         self.source = self.add_special_null(self.source)
         if init_from_saved_w:
@@ -235,8 +238,6 @@ class IbmModel1(IbmModel):
                     source_sent = [self.UNIQUE_NONE] + source_sent  # Adding Blank word in the beginning
 
                 s_total = defaultdict(int)  # count
-                if self.lidstone:
-                    self.lid_prob_ef_expected_alignment()
 
                 for t_w in target_sent:
                     for s_w in source_sent:
@@ -245,7 +246,10 @@ class IbmModel1(IbmModel):
                 for t_w in target_sent:
                     for s_w in source_sent:
                         expected = self.expected_alignment(s_w, t_w)
-                        collected_count = expected / s_total[t_w]
+                        if self.lidstone:
+                            collected_count = (expected + self.lidstone_n) / (s_total[t_w] + self.lidstone_n * (self.target))
+                        else:
+                            collected_count = expected / s_total[t_w]
                         count_e_f[s_w][t_w] += collected_count
                         total_f[s_w] += collected_count
             # M step
@@ -308,8 +312,8 @@ class IbmModel2(IbmModel):
     saved_distortion_fn = 'ibm2_distortion.pkl'
     def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False,
                  path_to_probs=None, saved_weight_fn=None, saved_distortion_fn=None,use_model_1=False,
-                 change_direction=False,dont_use_null=False, lidstone=False, random_init=False):
-        super().__init__(source, target, n_ep, early_stop,  "IBM_Model2", change_direction,dont_use_null, lidstone,random_init)
+                 change_direction=False,dont_use_null=False, lidstone=False, random_init=False, lidstone_n=5):
+        super().__init__(source, target, n_ep, early_stop,  "IBM_Model2", change_direction,dont_use_null, lidstone,random_init, lidstone_n)
         self.saved_weight_fn = 'ibm2_p.pkl'
         self.source: Lang = self.add_special_null(self.source)
         #Need to add length of both sentences
@@ -505,8 +509,9 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--early_stop', action='store_true')
     parser.add_argument('-dn', '--dont_use_null', action='store_true')
     parser.add_argument('-cd', '--change_direction', help='switch target and source' ,action='store_true')
-    parser.add_argument('-ld', '--lidstone', help='smoothing using lidstone' ,action='store_true')#TODO
-    parser.add_argument('-r', '--random_init', help='strat with random init' ,action='store_true')#TODO
+    parser.add_argument('-ld', '--lidstone', help='smoothing using lidstone' ,action='store_true') #TODO
+    parser.add_argument('-ln', '--lidstone_n', help='smoothing using lidstone' ,default=5, type=int) #TODO
+    parser.add_argument('-r', '--random_init', help='strat with random init' ,action='store_true') #TODO
     args = parser.parse_args()
     suf_fr = 'f'
     suf_en = 'e'
@@ -515,10 +520,12 @@ if __name__ == '__main__':
     fr = Lang(suf_fr, args.num_of_lines, args.lower_case)
     if args.model == 1:
         model = IbmModel1(fr, en, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we,
-                          change_direction=args.change_direction,dont_use_null=args.dont_use_null, lidstone=args.lidstone, random_init=args.random_init)
+                          change_direction=args.change_direction,dont_use_null=args.dont_use_null, lidstone=args.lidstone,
+                          random_init=args.random_init, lidstone_n=args.lidstone_n)
     elif args.model == 2:
         model = IbmModel2(fr, en, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we, use_model_1=args.use_model_1,
-                          change_direction=args.change_direction, dont_use_null=args.dont_use_null, lidstone=args.lidstone,  random_init=args.random_init)
+                          change_direction=args.change_direction, dont_use_null=args.dont_use_null, lidstone=args.lidstone,
+                          random_init=args.random_init,lidstone_n=args.lidstone_n)
     else:
         raise ValueError("model supports only 1 or 2")
     extra_info = ''
