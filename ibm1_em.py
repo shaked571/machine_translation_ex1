@@ -80,7 +80,7 @@ class Lang:
 class IbmModel(abc.ABC):
     UNIQUE_NONE = '*None*'
 
-    def __init__(self, source: Lang, target: Lang, n_ep,early_stop, model_name, change_direction,dont_use_null, lidstone ):
+    def __init__(self, source: Lang, target: Lang, n_ep,early_stop, model_name, change_direction,dont_use_null, lidstone,random_init ):
         self.model_name = model_name
         self.n_ep: int = n_ep
         self.early_stop: bool = early_stop
@@ -88,9 +88,10 @@ class IbmModel(abc.ABC):
         self.saved_weight_fn = None
         self.dont_use_null:bool =dont_use_null
         self.lidstone:bool =lidstone
+        self.random_init=random_init
         self.change_direction = change_direction
         if self.change_direction:
-            self.target: Lang =source
+            self.target: Lang = source
             self.source: Lang = target
         else:
             self.target: Lang = target
@@ -132,6 +133,21 @@ class IbmModel(abc.ABC):
         prob_ef = defaultdict(lambda: defaultdict(lambda: 1 / self.target.unique))
         return prob_ef
 
+    @staticmethod
+    def softmax(x, axis=None):
+        x = x - x.max(axis=axis, keepdims=True)
+        y = np.exp(x)
+        return y / y.sum(axis=axis, keepdims=True)
+
+    def init_random_prob(self):
+        prob_ef = defaultdict(lambda: defaultdict(lambda: int))
+        for s_w in self.source.voc:
+            norm = self.softmax(np.random.normal(1,1,self.target.unique))
+            for i, t_w in enumerate(self.target.voc):
+                prob_ef[s_w][t_w] = norm[i]
+        return prob_ef
+
+
     def predict_all(self, extra_info):
         res = []
         for source_sent, target_sent in tqdm(zip(self.source.data, self.target.data),
@@ -169,8 +185,8 @@ class IbmModel(abc.ABC):
 class IbmModel1(IbmModel):
 
     def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False, path_to_probs=None, saved_weight_fn=None,
-                 change_direction=False,dont_use_null=False, lidstone=False):
-        super(IbmModel1, self).__init__(source, target, n_ep, early_stop,'IBM_Model1',change_direction,dont_use_null,lidstone )
+                 change_direction=False,dont_use_null=False, lidstone=False, random_init=False):
+        super(IbmModel1, self).__init__(source, target, n_ep, early_stop,'IBM_Model1',change_direction,dont_use_null,lidstone,random_init)
         self.saved_weight_fn = 'ibm1_p.pkl'
         self.source = self.add_special_null(self.source)
         if init_from_saved_w:
@@ -193,6 +209,11 @@ class IbmModel1(IbmModel):
 
         return prob
 
+    # def lid_prob_ef_expected_alignment(self, count_e_f):
+    #     for s_w, s_w_count in tqdm(count_e_f.items(), desc='lidstone', total=len(count_e_f)):
+    #         for t_w, val in s_w_count.items():
+    #             upd_prob = val / total_f[s_w]
+    #             self.prob_ef_expected_alignment[s_w][t_w] = upd_prob
 
     def algo(self):
         for epoch in tqdm(range(self.n_ep), desc="epoch num", total=self.n_ep):
@@ -274,8 +295,6 @@ class IbmModel1(IbmModel):
     def save_probs(self):
         self.save_alighnment()
 
-    def lid_prob_ef_expected_alignment(self):
-        pass
 
 
 #1. Add lidstone smoothing
@@ -289,8 +308,8 @@ class IbmModel2(IbmModel):
     saved_distortion_fn = 'ibm2_distortion.pkl'
     def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False,
                  path_to_probs=None, saved_weight_fn=None, saved_distortion_fn=None,use_model_1=False,
-                 change_direction=False,dont_use_null=False, lidstone=False):
-        super().__init__(source, target, n_ep, early_stop,  "IBM_Model2", change_direction,dont_use_null, lidstone)
+                 change_direction=False,dont_use_null=False, lidstone=False, random_init=False):
+        super().__init__(source, target, n_ep, early_stop,  "IBM_Model2", change_direction,dont_use_null, lidstone,random_init)
         self.saved_weight_fn = 'ibm2_p.pkl'
         self.source: Lang = self.add_special_null(self.source)
         #Need to add length of both sentences
@@ -484,9 +503,10 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--p2we', help='path to saved weights',  default=None)
     parser.add_argument('-o', '--use_model_1', action='store_true')
     parser.add_argument('-s', '--early_stop', action='store_true')
-    parser.add_argument('-dn', '--dont_use_null', action='store_true') #TODO
-    parser.add_argument('-cd', '--change_direction', help='switch target and source' ,action='store_true') #TODO
+    parser.add_argument('-dn', '--dont_use_null', action='store_true')
+    parser.add_argument('-cd', '--change_direction', help='switch target and source' ,action='store_true')
     parser.add_argument('-ld', '--lidstone', help='smoothing using lidstone' ,action='store_true')#TODO
+    parser.add_argument('-r', '--random_init', help='strat with random init' ,action='store_true')#TODO
     args = parser.parse_args()
     suf_fr = 'f'
     suf_en = 'e'
@@ -495,10 +515,10 @@ if __name__ == '__main__':
     fr = Lang(suf_fr, args.num_of_lines, args.lower_case)
     if args.model == 1:
         model = IbmModel1(fr, en, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we,
-                          change_direction=args.change_direction,dont_use_null=args.dont_use_null, lidstone=args.lidstone)
+                          change_direction=args.change_direction,dont_use_null=args.dont_use_null, lidstone=args.lidstone, random_init=args.random_init)
     elif args.model == 2:
         model = IbmModel2(fr, en, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we, use_model_1=args.use_model_1,
-                          change_direction=args.change_direction,dont_use_null=args.dont_use_null, lidstone=args.lidstone)
+                          change_direction=args.change_direction, dont_use_null=args.dont_use_null, lidstone=args.lidstone,  random_init=args.random_init)
     else:
         raise ValueError("model supports only 1 or 2")
     extra_info = ''
