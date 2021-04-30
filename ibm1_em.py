@@ -82,18 +82,27 @@ class IbmModel(abc.ABC):
 
     def __init__(self, source: Lang, target: Lang, n_ep,early_stop, model_name, change_direction,dont_use_null, lidstone ):
         self.model_name = model_name
-        self.target: Lang = target
-        self.source: Lang = source
         self.n_ep: int = n_ep
         self.early_stop: bool = early_stop
         self.prob_ef_expected_alignment = None
         self.saved_weight_fn = None
         self.dont_use_null:bool =dont_use_null
+        self.lidstone:bool =lidstone
+        self.change_direction = change_direction
+        if self.change_direction:
+            self.target: Lang =source
+            self.source: Lang = target
+        else:
+            self.target: Lang = target
+            self.source: Lang = source
         self.saved_weight_fn_model_1 = 'ibm1_p.pkl'
         self.logger = logging.getLogger(self.model_name)
         self.logger.info(f"Start model: {self.model_name}")
         self.logger.info(f"would num of epoch: {self.n_ep}")
         self.logger.info(f"Start with early stop: {self.early_stop}")
+        self.logger.info(f"Start with lidstone: {self.lidstone}")
+        self.logger.info(f"Start with using null: {not self.dont_use_null}")
+        self.logger.info(f"Start with change direction: {self.change_direction}")
         self.extra_parameters = ''
 
 
@@ -128,10 +137,11 @@ class IbmModel(abc.ABC):
         for source_sent, target_sent in tqdm(zip(self.source.data, self.target.data),
                                              desc="predicting sentences", total=len(self.source.data)):
             res.append(self.predict(source_sent, target_sent))
-        f_name = f"prediction_{self.model_name}_epoch_{self.n_ep}{extra_info}.txt"
+        f_name = f"prediction_{self.model_name}_epoch_{self.n_ep}_use_null_{not self.dont_use_null}_lidstone_{self.lidstone}{extra_info}.txt"
         self.logger.info(f"writing to: {f_name}")
         with open(f_name, mode='w') as f:
             f.writelines(res)
+
 
     @abc.abstractmethod
     def predict(self, source_sent, target_sent):
@@ -149,12 +159,18 @@ class IbmModel(abc.ABC):
         with open(self.saved_weight_fn, 'wb') as f:
             pickle.dump(dict(self.prob_ef_expected_alignment), f, pickle.HIGHEST_PROTOCOL)
 
+    def add_line(self, res, t_idx, probable_align):
+        if self.change_direction:
+            res.append(f"{t_idx}-{probable_align}")
+        else:
+            res.append(f"{probable_align}-{t_idx}")
+
 
 class IbmModel1(IbmModel):
 
     def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False, path_to_probs=None, saved_weight_fn=None,
                  change_direction=False,dont_use_null=False, lidstone=False):
-        super(IbmModel1, self).__init__(source, target, n_ep, early_stop,'IBM_Model1' )
+        super(IbmModel1, self).__init__(source, target, n_ep, early_stop,'IBM_Model1',change_direction,dont_use_null,lidstone )
         self.saved_weight_fn = 'ibm1_p.pkl'
         self.source = self.add_special_null(self.source)
         if init_from_saved_w:
@@ -198,6 +214,9 @@ class IbmModel1(IbmModel):
                     source_sent = [self.UNIQUE_NONE] + source_sent  # Adding Blank word in the beginning
 
                 s_total = defaultdict(int)  # count
+                if self.lisdtone:
+                    self.lid_prob_ef_expected_alignment()
+
                 for t_w in target_sent:
                     for s_w in source_sent:
                         s_total[t_w] += self.expected_alignment(s_w, t_w)
@@ -246,13 +265,17 @@ class IbmModel1(IbmModel):
                     best_prob = curr_prob
                     probable_align = s_idx
             if probable_align != self.UNIQUE_NONE:
-                res.append(f"{probable_align}-{t_idx}")
+                self.add_line(res, t_idx, probable_align)
         str_out = " ".join(res)
         str_out =str_out + "\n"
         return str_out
 
+
     def save_probs(self):
         self.save_alighnment()
+
+    def lid_prob_ef_expected_alignment(self):
+        pass
 
 
 #1. Add lidstone smoothing
@@ -406,7 +429,7 @@ class IbmModel2(IbmModel):
                         best_prob = cur_val
                         probable_align = idx_s
                 if probable_align != self.UNIQUE_NONE:
-                    res.append(f"{probable_align}-{t_idx}")
+                    self.add_line(res, t_idx, probable_align)
             str_out = " ".join(res)
             str_out =str_out + "\n"
             return str_out
