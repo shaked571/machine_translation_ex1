@@ -256,7 +256,6 @@ class IbmModel1(IbmModel):
 class IbmModel2(IbmModel):
 
     saved_distortion_fn = 'ibm2_distortion.pkl'
-    DUMMY_WORD  = "*DUMMY*FOR*LEN*"
     def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False,
                  path_to_probs=None, saved_weight_fn=None, saved_distortion_fn=None,use_model_1=False):
         super().__init__(source, target, n_ep, early_stop,  "IBM_Model2")
@@ -345,12 +344,10 @@ class IbmModel2(IbmModel):
                 # compute normaliztion
                 delta_k = defaultdict(int)  # count
                 for idx_t, t_w in enumerate(target_sent):
-                    idx_t += 1
                     for idx_s, s_w in enumerate(source_sent):
                         delta_k[t_w] += self.get_expected_prob(idx_s, idx_t, s_w, s_len, t_w, t_len)
 
                 for idx_t, t_w in enumerate(target_sent):  # 1,2,3
-                    idx_t += 1
                     for idx_s, s_w in enumerate(source_sent):
                         expected = self.get_expected_prob(idx_s, idx_t, s_w, s_len, t_w, t_len)
                         collected_count = expected / delta_k[t_w]
@@ -370,9 +367,8 @@ class IbmModel2(IbmModel):
             for idx_t, src_lengths in count_alignment.items():
                 for s_len, trg_sentence_lengths in src_lengths.items():
                     for t_len, s_indices in trg_sentence_lengths.items():
-                        e = total_t_for_s[idx_t][s_len][t_len]
                         for idx_s in s_indices:
-                            upd_prob = count_alignment[idx_t][s_len][t_len][idx_s] / e
+                            upd_prob = count_alignment[idx_t][s_len][t_len][idx_s] / total_t_for_s[idx_t][s_len][t_len]
                             count_alignment[idx_t][s_len][t_len][idx_s] = upd_prob
 
     def expected_distortion(self, idx_s, idx_t, len_s, len_t):
@@ -387,10 +383,10 @@ class IbmModel2(IbmModel):
             source_len = len(source_sent)
             for t_idx, t_w in enumerate(target_sent):
                 # Initialize trg_word to align with the NULL token
-                best_prob = self.get_expected_prob(0, t_idx+1, self.UNIQUE_NONE, source_len, t_w, target_len)
+                best_prob = self.get_expected_prob(0, t_idx, self.UNIQUE_NONE, source_len, t_w, target_len)
                 probable_align = self.UNIQUE_NONE
                 for idx_s, s_w in enumerate(source_sent):
-                    cur_val = self.get_expected_prob(idx_s+1, t_idx+1, s_w, source_len, t_w, target_len)
+                    cur_val = self.get_expected_prob(idx_s+1, t_idx, s_w, source_len, t_w, target_len)
                     if cur_val >= best_prob:
                         best_prob = cur_val
                         probable_align = idx_s
@@ -414,7 +410,7 @@ class IbmModel2(IbmModel):
                 all_lengths.add((len_s, len_t))
                 initial_prob = 1 / (len_s + 1)  # all the words  + Nonefv
                 for idx_s in range(len_s + 1):
-                    for idx_t in range(1, len_t + 1): #need to add a dummy word for len...
+                    for idx_t in range(len_t): #need to add a dummy word for len...
                         distortion_table[idx_t][len_s][len_t][idx_s] = initial_prob
 
         return distortion_table
@@ -428,7 +424,6 @@ class IbmModel2(IbmModel):
         for s_idx, sw in enumerate(source_sent):
             inner_sum = 0
             for t_idx, tw in enumerate(target_sent):
-                t_idx += 1
                 inner_sum += self.get_expected_prob(s_idx, t_idx, sw, source_len, tw, target_len)
             p_e_f = inner_sum * p_e_f
         p_e_f = p_e_f / (target_len ** source_len)
