@@ -344,17 +344,16 @@ class IbmModel2(IbmModel):
                 source_sent = [self.UNIQUE_NONE] + source_sent  # Adding Blank word in the beginning
                 # compute normaliztion
                 delta_k = defaultdict(int)  # count
-                for idx_s, s_w in enumerate(source_sent):
-                    for idx_t, t_w in enumerate(target_sent):
-                        idx_t += 1
-                        delta_k[idx_s] += self.get_expected_prob(idx_s, idx_t, s_w, s_len, t_w, t_len)
-                        assert idx_t <= len(target_sent)
+                for idx_t, t_w in enumerate(target_sent):
+                    idx_t += 1
+                    for idx_s, s_w in enumerate(source_sent):
+                        delta_k[t_w] += self.get_expected_prob(idx_s, idx_t, s_w, s_len, t_w, t_len)
 
-                for idx_s, s_w in enumerate(source_sent):
-                    for idx_t, t_w in enumerate(target_sent):  # 1,2,3
-                        idx_t += 1
+                for idx_t, t_w in enumerate(target_sent):  # 1,2,3
+                    idx_t += 1
+                    for idx_s, s_w in enumerate(source_sent):
                         expected = self.get_expected_prob(idx_s, idx_t, s_w, s_len, t_w, t_len)
-                        collected_count = expected / delta_k[idx_s]
+                        collected_count = expected / delta_k[t_w]
                         # e given f
                         count_e_f[s_w][t_w] += collected_count
                         total_f[s_w] += collected_count
@@ -371,8 +370,9 @@ class IbmModel2(IbmModel):
             for idx_t, src_lengths in count_alignment.items():
                 for s_len, trg_sentence_lengths in src_lengths.items():
                     for t_len, s_indices in trg_sentence_lengths.items():
+                        e = total_t_for_s[idx_t][s_len][t_len]
                         for idx_s in s_indices:
-                            upd_prob = count_alignment[idx_t][s_len][t_len][idx_s] / total_t_for_s[idx_t][s_len][t_len]
+                            upd_prob = count_alignment[idx_t][s_len][t_len][idx_s] / e
                             count_alignment[idx_t][s_len][t_len][idx_s] = upd_prob
 
     def expected_distortion(self, idx_s, idx_t, len_s, len_t):
