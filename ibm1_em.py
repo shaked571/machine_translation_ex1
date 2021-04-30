@@ -214,7 +214,7 @@ class IbmModel1(IbmModel):
                     source_sent = [self.UNIQUE_NONE] + source_sent  # Adding Blank word in the beginning
 
                 s_total = defaultdict(int)  # count
-                if self.lisdtone:
+                if self.lidstone:
                     self.lid_prob_ef_expected_alignment()
 
                 for t_w in target_sent:
