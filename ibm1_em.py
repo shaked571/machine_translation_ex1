@@ -156,7 +156,7 @@ class IbmModel(abc.ABC):
         for source_sent, target_sent in tqdm(zip(self.source.data, self.target.data),
                                              desc="predicting sentences", total=len(self.source.data)):
             res.append(self.predict(source_sent, target_sent))
-        f_name = f"prediction_{self.model_name}_epoch_{self.n_ep}_use_null_{not self.dont_use_null}_lidstone_{self.lidstone}{extra_info}.txt"
+        f_name = f"prediction_{self.model_name}_epoch_{self.n_ep}_use_null_{not self.dont_use_null}_lidstone_{self.lidstone}_ld_n_{self.lidstone_n}{extra_info}.txt"
         self.logger.info(f"writing to: {f_name}")
         with open(f_name, mode='w') as f:
             f.writelines(res)
@@ -247,7 +247,7 @@ class IbmModel1(IbmModel):
                     for s_w in source_sent:
                         expected = self.expected_alignment(s_w, t_w)
                         if self.lidstone:
-                            collected_count = (expected + self.lidstone_n) / (s_total[t_w] + self.lidstone_n * (self.target))
+                            collected_count = (expected + self.lidstone_n) / (s_total[t_w] + (self.lidstone_n * self.target.unique))
                         else:
                             collected_count = expected / s_total[t_w]
                         count_e_f[s_w][t_w] += collected_count
