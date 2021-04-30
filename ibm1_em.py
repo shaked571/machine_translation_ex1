@@ -422,9 +422,9 @@ class IbmModel2(IbmModel):
                 probable_align = self.UNIQUE_NONE
                 for idx_s, s_w in enumerate(source_sent):
                     if self.dont_use_null:
-                        cur_val = self.get_expected_prob(idx_s+1, t_idx, s_w, source_len, t_w, target_len)
-                    else:
                         cur_val = self.get_expected_prob(idx_s, t_idx, s_w, source_len, t_w, target_len)
+                    else:
+                        cur_val = self.get_expected_prob(idx_s+1, t_idx, s_w, source_len, t_w, target_len)
                     if cur_val >= best_prob:
                         best_prob = cur_val
                         probable_align = idx_s
