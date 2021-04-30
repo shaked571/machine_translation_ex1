@@ -10,28 +10,7 @@ from collections import Counter, defaultdict
 import numpy as np
 from tqdm import tqdm
 import pickle
-"""
-Download and extract the contents of this file.
 
-You will find French data, English data, some gold alignments, an example of an alignment file output, some scripts, and a README file. 
-Read the README file.
-
-Goal: You need to write a program that takes the English and French data, aligns it, and produces an aligment file in the format described in the README file. In addition, you should write the translation parameters t(e,f) to a file.
-
-For 80% of the credit, implment IBM model 1. For the additional 20%, implement model 2. You can find the details of model 2's EM procedure in Michael Collins' notes, available from the course webpage.
-
-The supplied .a file contains manual alignments for the first few sentence pairs. This file should not be used in training your aligner (and it is too small anyways). But you can use it to measure the quality of your alignments in terms of AER using the supplied evaluation script.
-
-What to submit: For this part, you need to submit a zip file containing (a) your code (b) a README file, describing how to run your code to align the data with model 1 and model 2 (c) output aligment file for model 1 and output aligment file for model 2.
-
-A note about memory: While developing/debugging your code, you can use only the first k lines of the data. However, your final submission is expected to run on the entire dataset. This is a relatively small dataset, and should easily fit in the memory of a relatively modern personal computer. If it does not fit, maybe you should re-structure your program.
-If you are using Java, make sure you allocate enough heap space for the JVM, as the default is very small. The head size can be specified using the -Xmx flag:
-
-  java -Xmx1g YourClassName
-will allocate 1gb of heap size.
-
-
-"""
 now = datetime.now().strftime("%d_%H_%M_%S")
 if not os.path.isdir('logs'):
     os.mkdir('logs')
@@ -143,6 +122,7 @@ class IbmModel(abc.ABC):
         return y / y.sum(axis=axis, keepdims=True)
 
     def init_random_prob(self):
+        self.logger.info("init random")
         prob_ef = defaultdict(lambda: defaultdict(lambda: int))
         for s_w in self.source.voc:
             norm = self.softmax(np.random.normal(1,1,self.target.unique))
@@ -150,9 +130,14 @@ class IbmModel(abc.ABC):
                 prob_ef[s_w][t_w] = norm[i]
         return prob_ef
 
+    def get_total_source_count(self):
+        pass
 
     def predict_all(self, extra_info):
         res = []
+        if self.lidstone:
+            self.total_count = self.get_total_source_count()
+
         for source_sent, target_sent in tqdm(zip(self.source.data, self.target.data),
                                              desc="predicting sentences", total=len(self.source.data)):
             res.append(self.predict(source_sent, target_sent))
@@ -185,18 +170,23 @@ class IbmModel(abc.ABC):
             res.append(f"{probable_align}-{t_idx}")
 
 
+
 class IbmModel1(IbmModel):
 
     def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False, path_to_probs=None, saved_weight_fn=None,
-                 change_direction=False,dont_use_null=False, lidstone=False, random_init=False,lidstone_n=5):
+                 change_direction=False,dont_use_null=False, lidstone=False, random_init=False,lidstone_n=5, extra_weight_to_null=False):
         super(IbmModel1, self).__init__(source, target, n_ep, early_stop,'IBM_Model1',change_direction,dont_use_null,lidstone,random_init,lidstone_n)
+        self.extra_weight_to_null = extra_weight_to_null
         self.saved_weight_fn = 'ibm1_p.pkl'
         self.source = self.add_special_null(self.source)
         if init_from_saved_w:
             self.logger.info("loading...")
             self.prob_ef_expected_alignment = self.load_probs(path_to_probs)
         else:
-            self.prob_ef_expected_alignment = self.init_uniform_prob()
+            if self.random_init:
+                self.prob_ef_expected_alignment = self.init_random_prob()
+            else:
+                self.prob_ef_expected_alignment = self.init_uniform_prob()
             self.perplexities = [np.inf]
             self.algo()
             self.perplexities.pop(0)  # remove the first
@@ -212,11 +202,12 @@ class IbmModel1(IbmModel):
 
         return prob
 
-    # def lid_prob_ef_expected_alignment(self, count_e_f):
-    #     for s_w, s_w_count in tqdm(count_e_f.items(), desc='lidstone', total=len(count_e_f)):
-    #         for t_w, val in s_w_count.items():
-    #             upd_prob = val / total_f[s_w]
-    #             self.prob_ef_expected_alignment[s_w][t_w] = upd_prob
+    def get_total_source_count(self):
+        total_target_count = defaultdict(int)
+        for sw, targets in self.prob_ef_expected_alignment.items():
+            for val in targets.values():
+                total_target_count[sw] += val
+        return total_target_count
 
     def algo(self):
         for epoch in tqdm(range(self.n_ep), desc="epoch num", total=self.n_ep):
@@ -246,10 +237,7 @@ class IbmModel1(IbmModel):
                 for t_w in target_sent:
                     for s_w in source_sent:
                         expected = self.expected_alignment(s_w, t_w)
-                        if self.lidstone:
-                            collected_count = (expected + self.lidstone_n) / (s_total[t_w] + (self.lidstone_n * self.target.unique))
-                        else:
-                            collected_count = expected / s_total[t_w]
+                        collected_count = expected / s_total[t_w]
                         count_e_f[s_w][t_w] += collected_count
                         total_f[s_w] += collected_count
             # M step
@@ -257,8 +245,6 @@ class IbmModel1(IbmModel):
                 for t_w, val in s_w_count.items():
                     upd_prob = val / total_f[s_w]
                     self.prob_ef_expected_alignment[s_w][t_w] = upd_prob
-
-
 
 
 
@@ -282,10 +268,20 @@ class IbmModel1(IbmModel):
             if self.dont_use_null:
                 best_prob = 0
             else:
-                best_prob = self.expected_alignment(self.UNIQUE_NONE, tw)
+                if self.lidstone:
+                    best_prob = ((self.expected_alignment(self.UNIQUE_NONE, tw) + self.lidstone_n) /
+                                 (self.total_count[self.UNIQUE_NONE] + (self.lidstone_n * self.target.unique)))
+                    if self.extra_weight_to_null:
+                        best_prob = best_prob * 1.2
+                else:
+                    best_prob = self.expected_alignment(self.UNIQUE_NONE, tw) * 1.2
+
             probable_align = self.UNIQUE_NONE
             for s_idx, sw in enumerate(source_sent):
-                curr_prob = self.expected_alignment(sw, tw)
+                if self.lidstone:
+                    curr_prob = (self.expected_alignment(sw, tw) + self.lidstone_n) / (self.total_count[sw] + (self.lidstone_n * self.target.unique))
+                else:
+                    curr_prob = self.expected_alignment(sw, tw)
                 if curr_prob >= best_prob:
                     best_prob = curr_prob
                     probable_align = s_idx
@@ -300,12 +296,6 @@ class IbmModel1(IbmModel):
         self.save_alighnment()
 
 
-
-#1. Add lidstone smoothing
-#2. Adding null to the source sentence
-#My ideas:
-#2. Do a normalization over the vocabulary - 'lower' to make unique.
-# Add extra null words?
 
 class IbmModel2(IbmModel):
 
@@ -510,7 +500,7 @@ if __name__ == '__main__':
     parser.add_argument('-dn', '--dont_use_null', action='store_true')
     parser.add_argument('-cd', '--change_direction', help='switch target and source' ,action='store_true')
     parser.add_argument('-ld', '--lidstone', help='smoothing using lidstone' ,action='store_true') #TODO
-    parser.add_argument('-ln', '--lidstone_n', help='smoothing using lidstone' ,default=5, type=int) #TODO
+    parser.add_argument('-ln', '--lidstone_n', help='smoothing using lidstone' ,default=0.01, type=float) #TODO
     parser.add_argument('-r', '--random_init', help='strat with random init' ,action='store_true') #TODO
     args = parser.parse_args()
     suf_fr = 'f'

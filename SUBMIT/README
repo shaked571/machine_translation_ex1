@@ -1,0 +1,55 @@
+================================================================
+Env
+=============================================================
+conda create -m “my_env” python=3.8
+pip install requirements.txt
+
+================================================================
+Usage
+=============================================================
+The usage is copied to here but I used argparse and can be shown using standard
+
+python ibm_em.py --help
+
+The program expect to have both
+    data/hansards.e
+    data/hansards.f
+when f is the source and e is the target.
+If you wish to run the other way around you will need to add the -cd flag.
+
+================================================================
+Example Usage
+================================================================
+python ibm_em.py-m 1 -e 10 -lc
+
+>>Would rum ibm model 1 for 10 epochs using lower case.
+
+================================================================
+Full Usage
+================================================================
+
+ibm_em.py [-h] [-m MODEL] [-n NUM_OF_LINES] [-e EPOCHS] [-lc] [-i] [-p P2WE] [-o] [-s] [-dn] [-cd] [-ld]
+                 [-ln LIDSTONE_N] [-r]
+
+Aligner model
+optional arguments:
+  -h, --help            show this help message and exit
+  -m MODEL, --model MODEL
+                        ibm model {1,2}
+  -n NUM_OF_LINES, --num_of_lines NUM_OF_LINES
+                        Number of lines to use
+  -e EPOCHS, --epochs EPOCHS
+                        Number of epochs
+  -lc, --lower_case     lower case all token
+  -i, --init_from_save init weights from saved pkl
+  -p P2WE, --p2we P2WE  path to saved weights
+  -o, --use_model_1
+  -s, --early_stop
+  -dn, --dont_use_null
+  -cd, --change_direction
+                        switch target and source
+  -ld, --lidstone       smoothing using lidstone
+  -ln LIDSTONE_N, --lidstone_n LIDSTONE_N
+                        smoothing using lidstone
+  -r, --random_init     strat with random init
+
