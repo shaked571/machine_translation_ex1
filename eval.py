@@ -45,6 +45,7 @@ for (i, (f, e, g, a)) in enumerate(zip(open(opts.f_file), open(opts.e_file), ope
                 sys.stdout.write(" %s " % letter)
             sys.stdout.write("\n")
         sys.stdout.write("\n")
+print("size a ", size_a)
 
 precision = size_a_and_p / size_a
 recall = size_a_and_s / size_s

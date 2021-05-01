@@ -18,11 +18,8 @@ file_handler = logging.FileHandler(filename=os.path.join('logs', f'log_{now}'))
 stdout_handler = logging.StreamHandler(sys.stdout)
 handlers = [file_handler, stdout_handler]
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s',
-    handlers=handlers
-)
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s',
+    handlers=handlers)
 
 
 class Lang:
@@ -59,17 +56,20 @@ class Lang:
 class IbmModel(abc.ABC):
     UNIQUE_NONE = '*None*'
     lidstone_n = 5
-    def __init__(self, source: Lang, target: Lang, n_ep,early_stop, model_name, change_direction,dont_use_null, lidstone,random_init,lidstone_n ):
+
+    def __init__(self, source: Lang, target: Lang, n_ep, early_stop, model_name, change_direction, dont_use_null,
+                 lidstone, random_init, lidstone_n):
         self.model_name = model_name
         self.n_ep: int = n_ep
         self.early_stop: bool = early_stop
         self.prob_ef_expected_alignment = None
         self.saved_weight_fn = None
-        self.dont_use_null: bool =dont_use_null
-        self.lidstone: bool =lidstone
-        self.random_init:bool=random_init
-        self.lidstone_n:int = lidstone_n
+        self.dont_use_null: bool = dont_use_null
+        self.lidstone: bool = lidstone
+        self.random_init: bool = random_init
+        self.lidstone_n: int = lidstone_n
         self.change_direction = change_direction
+
         if self.change_direction:
             self.target: Lang = source
             self.source: Lang = target
@@ -88,10 +88,8 @@ class IbmModel(abc.ABC):
         self.logger.info(f"Start with random init: {self.random_init}")
         self.extra_parameters = ''
 
-
     def expected_alignment(self, s_w, t_w):
         return self.prob_ef_expected_alignment[s_w][t_w]
-
 
     def add_special_null(self, lang):
         if self.dont_use_null:
@@ -104,8 +102,7 @@ class IbmModel(abc.ABC):
     def calc_perp(self, ):
         prep = 0
         for source_sent, target_sent in tqdm(zip(self.source.data[:100], self.target.data[:100]),
-                                             desc="Calc perp on  sents pairs",
-                                             total=100):
+                                             desc="Calc perp on  sents pairs", total=100):
             prob = self.probability_e_f(source_sent, target_sent)
             if prob != 0:
                 prep += math.log(prob, 2)  # log base
@@ -125,7 +122,7 @@ class IbmModel(abc.ABC):
         self.logger.info("init random")
         prob_ef = defaultdict(lambda: defaultdict(lambda: int))
         for s_w in self.source.voc:
-            norm = self.softmax(np.random.normal(1,1,self.target.unique))
+            norm = self.softmax(np.random.normal(1, 1, self.target.unique))
             for i, t_w in enumerate(self.target.voc):
                 prob_ef[s_w][t_w] = norm[i]
         return prob_ef
@@ -138,14 +135,13 @@ class IbmModel(abc.ABC):
         if self.lidstone:
             self.total_count = self.get_total_source_count()
 
-        for source_sent, target_sent in tqdm(zip(self.source.data, self.target.data),
-                                             desc="predicting sentences", total=len(self.source.data)):
+        for source_sent, target_sent in tqdm(zip(self.source.data, self.target.data), desc="predicting sentences",
+                                             total=len(self.source.data)):
             res.append(self.predict(source_sent, target_sent))
         f_name = f"prediction_{self.model_name}_epoch_{self.n_ep}_use_null_{not self.dont_use_null}_lidstone_{self.lidstone}_ld_n_{self.lidstone_n}{extra_info}.txt"
         self.logger.info(f"writing to: {f_name}")
         with open(f_name, mode='w') as f:
             f.writelines(res)
-
 
     @abc.abstractmethod
     def predict(self, source_sent, target_sent):
@@ -170,13 +166,16 @@ class IbmModel(abc.ABC):
             res.append(f"{probable_align}-{t_idx}")
 
 
-
 class IbmModel1(IbmModel):
 
-    def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False, path_to_probs=None, saved_weight_fn=None,
-                 change_direction=False,dont_use_null=False, lidstone=False, random_init=False,lidstone_n=5, extra_weight_to_null=False):
-        super(IbmModel1, self).__init__(source, target, n_ep, early_stop,'IBM_Model1',change_direction,dont_use_null,lidstone,random_init,lidstone_n)
+    def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False,
+                 path_to_probs=None, saved_weight_fn=None, change_direction=False, dont_use_null=False, lidstone=False,
+                 random_init=False, lidstone_n=5, extra_weight_to_null=False):
+        super(IbmModel1, self).__init__(source, target, n_ep, early_stop, 'IBM_Model1', change_direction, dont_use_null,
+                                        lidstone, random_init, lidstone_n)
+
         self.extra_weight_to_null = extra_weight_to_null
+        self.logger.info(f"Start with extra weight: {self.extra_weight_to_null}")
         self.saved_weight_fn = 'ibm1_p.pkl'
         self.source = self.add_special_null(self.source)
         if init_from_saved_w:
@@ -246,8 +245,6 @@ class IbmModel1(IbmModel):
                     upd_prob = val / total_f[s_w]
                     self.prob_ef_expected_alignment[s_w][t_w] = upd_prob
 
-
-
     def probability_e_f(self, source_sent, target_sent):
         source_len = len(source_sent)
         target_len = len(target_sent)
@@ -269,17 +266,18 @@ class IbmModel1(IbmModel):
                 best_prob = 0
             else:
                 if self.lidstone:
-                    best_prob = ((self.expected_alignment(self.UNIQUE_NONE, tw) + self.lidstone_n) /
-                                 (self.total_count[self.UNIQUE_NONE] + (self.lidstone_n * self.target.unique)))
+                    best_prob = ((self.expected_alignment(self.UNIQUE_NONE, tw) + self.lidstone_n) / (
+                                self.total_count[self.UNIQUE_NONE] + (self.lidstone_n * self.target.unique)))
                     if self.extra_weight_to_null:
-                        best_prob = best_prob * 1.2
+                        best_prob = best_prob * 1.0001
                 else:
-                    best_prob = self.expected_alignment(self.UNIQUE_NONE, tw) * 1.2
+                    best_prob = self.expected_alignment(self.UNIQUE_NONE, tw)
 
             probable_align = self.UNIQUE_NONE
             for s_idx, sw in enumerate(source_sent):
                 if self.lidstone:
-                    curr_prob = (self.expected_alignment(sw, tw) + self.lidstone_n) / (self.total_count[sw] + (self.lidstone_n * self.target.unique))
+                    curr_prob = (self.expected_alignment(sw, tw) + self.lidstone_n) / (
+                                self.total_count[sw] + (self.lidstone_n * self.target.unique))
                 else:
                     curr_prob = self.expected_alignment(sw, tw)
                 if curr_prob >= best_prob:
@@ -288,25 +286,24 @@ class IbmModel1(IbmModel):
             if probable_align != self.UNIQUE_NONE:
                 self.add_line(res, t_idx, probable_align)
         str_out = " ".join(res)
-        str_out =str_out + "\n"
+        str_out = str_out + "\n"
         return str_out
-
 
     def save_probs(self):
         self.save_alighnment()
 
 
-
 class IbmModel2(IbmModel):
-
     saved_distortion_fn = 'ibm2_distortion.pkl'
+
     def __init__(self, source: Lang, target: Lang, n_ep=100, early_stop=True, init_from_saved_w=False,
-                 path_to_probs=None, saved_weight_fn=None, saved_distortion_fn=None,use_model_1=False,
-                 change_direction=False,dont_use_null=False, lidstone=False, random_init=False, lidstone_n=5):
-        super().__init__(source, target, n_ep, early_stop,  "IBM_Model2", change_direction,dont_use_null, lidstone,random_init, lidstone_n)
+                 path_to_probs=None, saved_weight_fn=None, saved_distortion_fn=None, use_model_1=False,
+                 change_direction=False, dont_use_null=False, lidstone=False, random_init=False, lidstone_n=5):
+        super().__init__(source, target, n_ep, early_stop, "IBM_Model2", change_direction, dont_use_null, lidstone,
+                         random_init, lidstone_n)
         self.saved_weight_fn = 'ibm2_p.pkl'
         self.source: Lang = self.add_special_null(self.source)
-        #Need to add length of both sentences
+        # Need to add length of both sentences
         self.n_ep: int = n_ep
         if saved_weight_fn is not None:
             self.saved_weight_fn = saved_weight_fn
@@ -320,7 +317,7 @@ class IbmModel2(IbmModel):
 
         else:
             if use_model_1:
-                self.prob_ef_expected_alignment = self.load_probs(path_to_probs, self.saved_weight_fn_model_1 )
+                self.prob_ef_expected_alignment = self.load_probs(path_to_probs, self.saved_weight_fn_model_1)
             else:
                 self.prob_ef_expected_alignment = self.init_uniform_prob()
             self.distortion_table = self.init_distortion_uniformly()
@@ -353,7 +350,6 @@ class IbmModel2(IbmModel):
         with open(self.saved_distortion_fn, 'wb') as f:
             pickle.dump(self.distortion_table, f, pickle.HIGHEST_PROTOCOL)
 
-
     def algo(self):
         for epoch in tqdm(range(self.n_ep), desc="epoch num", total=self.n_ep):
             curr_perp = self.calc_perp()
@@ -363,21 +359,12 @@ class IbmModel2(IbmModel):
                 self.logger.info("Doing early stopping, the model converged.")
                 break
             # E step
-            #1
+            # 1
             count_e_f = defaultdict(lambda: defaultdict(int))
             total_f = defaultdict(int)  # a dict from source (french) to  target (english) {f:e}
-            #2
-            count_alignment = defaultdict(
-                lambda: defaultdict(
-                    lambda: defaultdict(
-                        lambda: defaultdict(
-                            lambda: 0)))
-            )
-            total_t_for_s = defaultdict(
-                lambda: defaultdict(
-                    lambda: defaultdict(
-                        lambda: 0))
-            )
+            # 2
+            count_alignment = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 0))))
+            total_t_for_s = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 0)))
 
             for source_sent, target_sent in tqdm(zip(self.source.data, self.target.data),
                                                  desc="Iterate all sents pairs", total=len(self.source.data)):
@@ -423,35 +410,35 @@ class IbmModel2(IbmModel):
         return self.expected_alignment(s_w, t_w) * self.expected_distortion(idx_s, idx_t, source_len, target_len)
 
     def predict(self, source_sent, target_sent):
-            res = []
-            target_len = len(target_sent)
-            source_len = len(source_sent)
-            for t_idx, t_w in enumerate(target_sent):
-                # Initialize trg_word to align with the NULL token
+        res = []
+        target_len = len(target_sent)
+        source_len = len(source_sent)
+        for t_idx, t_w in enumerate(target_sent):
+            # Initialize trg_word to align with the NULL token
+            if self.dont_use_null:
+                best_prob = 0
+            else:
+                best_prob = self.get_expected_prob(0, t_idx, self.UNIQUE_NONE, source_len, t_w, target_len)
+            probable_align = self.UNIQUE_NONE
+            for idx_s, s_w in enumerate(source_sent):
                 if self.dont_use_null:
-                    best_prob = 0
+                    cur_val = self.get_expected_prob(idx_s, t_idx, s_w, source_len, t_w, target_len)
                 else:
-                    best_prob = self.get_expected_prob(0, t_idx, self.UNIQUE_NONE, source_len, t_w, target_len)
-                probable_align = self.UNIQUE_NONE
-                for idx_s, s_w in enumerate(source_sent):
-                    if self.dont_use_null:
-                        cur_val = self.get_expected_prob(idx_s, t_idx, s_w, source_len, t_w, target_len)
-                    else:
-                        cur_val = self.get_expected_prob(idx_s+1, t_idx, s_w, source_len, t_w, target_len)
-                    if cur_val >= best_prob:
-                        best_prob = cur_val
-                        probable_align = idx_s
-                if probable_align != self.UNIQUE_NONE:
-                    self.add_line(res, t_idx, probable_align)
-            str_out = " ".join(res)
-            str_out =str_out + "\n"
-            return str_out
+                    cur_val = self.get_expected_prob(idx_s + 1, t_idx, s_w, source_len, t_w, target_len)
+                if cur_val >= best_prob:
+                    best_prob = cur_val
+                    probable_align = idx_s
+            if probable_align != self.UNIQUE_NONE:
+                self.add_line(res, t_idx, probable_align)
+        str_out = " ".join(res)
+        str_out = str_out + "\n"
+        return str_out
 
     def init_distortion_uniformly(self):
-        distortion_table = defaultdict( # s_idx
-            lambda: defaultdict(        # t_idx
-                lambda: defaultdict(    # len_s
-                    lambda: defaultdict(# len_t
+        distortion_table = defaultdict(  # s_idx
+            lambda: defaultdict(  # t_idx
+                lambda: defaultdict(  # len_s
+                    lambda: defaultdict(  # len_t
                         lambda: int))))
         all_lengths = set()
         for source_sent, target_sent in zip(self.source.data, self.target.data):
@@ -472,7 +459,6 @@ class IbmModel2(IbmModel):
 
         return distortion_table
 
-
     def probability_e_f(self, source_sent, target_sent):
         source_len = len(source_sent)
         target_len = len(target_sent)
@@ -487,6 +473,7 @@ class IbmModel2(IbmModel):
         p_e_f = p_e_f / (target_len ** source_len)
         return p_e_f
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Aligner model')
     parser.add_argument('-m', '--model', help='ibm model {1,2} ', default=None, type=int)
@@ -494,14 +481,15 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--epochs', help='Number of epochs', default=5, type=int)
     parser.add_argument('-lc', '--lower_case', help='lower case all token', action='store_true')
     parser.add_argument('-i', '--init_from_saved', help='init weights from saved pkl', action='store_true')
-    parser.add_argument('-p', '--p2we', help='path to saved weights',  default=None)
+    parser.add_argument('-p', '--p2we', help='path to saved weights', default=None)
     parser.add_argument('-o', '--use_model_1', action='store_true')
     parser.add_argument('-s', '--early_stop', action='store_true')
     parser.add_argument('-dn', '--dont_use_null', action='store_true')
-    parser.add_argument('-cd', '--change_direction', help='switch target and source' ,action='store_true')
-    parser.add_argument('-ld', '--lidstone', help='smoothing using lidstone' ,action='store_true') #TODO
-    parser.add_argument('-ln', '--lidstone_n', help='smoothing using lidstone' ,default=0.01, type=float) #TODO
-    parser.add_argument('-r', '--random_init', help='strat with random init' ,action='store_true') #TODO
+    parser.add_argument('-cd', '--change_direction', help='switch target and source', action='store_true')
+    parser.add_argument('-ld', '--lidstone', help='smoothing using lidstone', action='store_true')
+    parser.add_argument('-ln', '--lidstone_n', help='smoothing using lidstone', default=0.01, type=float)
+    parser.add_argument('-r', '--random_init', help='strat with random init', action='store_true')
+    parser.add_argument('-x', '--extra_weight', help='strat with random init', action='store_true')
     args = parser.parse_args()
     suf_fr = 'f'
     suf_en = 'e'
@@ -509,13 +497,15 @@ if __name__ == '__main__':
     en = Lang(suf_en, args.num_of_lines, args.lower_case)
     fr = Lang(suf_fr, args.num_of_lines, args.lower_case)
     if args.model == 1:
-        model = IbmModel1(fr, en, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we,
-                          change_direction=args.change_direction,dont_use_null=args.dont_use_null, lidstone=args.lidstone,
-                          random_init=args.random_init, lidstone_n=args.lidstone_n)
+        model = IbmModel1(fr, en, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop,
+                          path_to_probs=args.p2we, change_direction=args.change_direction,
+                          dont_use_null=args.dont_use_null, lidstone=args.lidstone, random_init=args.random_init,
+                          lidstone_n=args.lidstone_n, extra_weight_to_null=args.extra_weight)
     elif args.model == 2:
-        model = IbmModel2(fr, en, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop, path_to_probs=args.p2we, use_model_1=args.use_model_1,
-                          change_direction=args.change_direction, dont_use_null=args.dont_use_null, lidstone=args.lidstone,
-                          random_init=args.random_init,lidstone_n=args.lidstone_n)
+        model = IbmModel2(fr, en, n_ep=args.epochs, init_from_saved_w=args.init_from_saved, early_stop=args.early_stop,
+                          path_to_probs=args.p2we, use_model_1=args.use_model_1, change_direction=args.change_direction,
+                          dont_use_null=args.dont_use_null, lidstone=args.lidstone, random_init=args.random_init,
+                          lidstone_n=args.lidstone_n, extra_weight=args.extra_weight)
     else:
         raise ValueError("model supports only 1 or 2")
     extra_info = ''
@@ -524,8 +514,3 @@ if __name__ == '__main__':
     if args.lower_case:
         extra_info += f'_lower_case'
     model.predict_all(extra_info)
-
-
-    
-
-
